@@ -83,7 +83,12 @@ STATES = [
       (() => {
         const row = [...document.querySelectorAll('[data-testid="change-row"]')]
           .find(r => r.textContent.includes('dag.ts'));
-        row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+        const rect = row.getBoundingClientRect();
+        row.dispatchEvent(new MouseEvent('contextmenu', {
+          bubbles: true, cancelable: true, button: 2,
+          clientX: Math.round(rect.left + rect.width / 2),
+          clientY: Math.round(rect.top + rect.height / 2),
+        }));
       })()
     """, "16-dark-context-menu.png"),
     ("""
@@ -98,7 +103,12 @@ STATES = [
         window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
         const row = [...document.querySelectorAll('[data-testid="change-row"]')]
           .find(r => r.textContent.includes('assets/'));
-        row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+        const rect = row.getBoundingClientRect();
+        row.dispatchEvent(new MouseEvent('contextmenu', {
+          bubbles: true, cancelable: true, button: 2,
+          clientX: Math.round(rect.left + rect.width / 2),
+          clientY: Math.round(rect.top + rect.height / 2),
+        }));
       })()
     """, "19-dark-clean-menu.png"),
     ("""
@@ -144,6 +154,48 @@ STATES = [
         }});
       }})()
     """, "15-dark-changes-clean.png"),
+    # ---- W4: commit box / command lens / settings ----
+    (f"""
+      (() => {{
+        window.__eg.repoStore.setState({{
+          status: {json.dumps(STATUS_R1)},
+          selectedChange: null,
+        }});
+        const input = document.querySelector('[data-testid="commit-subject"]');
+        const setter = Object.getOwnPropertyDescriptor(
+          window.HTMLInputElement.prototype, 'value').set;
+        setter.call(input, '接入暂存区与提交流程');
+        input.dispatchEvent(new Event('input', {{ bubbles: true }}));
+      }})()
+    """, "21-dark-commit-box.png"),
+    (f"""
+      (() => {{
+        const lens = window.__eg.lensStore.getState();
+        lens.clear();
+        lens.record('git add -- "src/app.ts"');
+        lens.record('git restore --staged -- "src/dag.ts"');
+        lens.record('git commit -m "接入暂存区与提交流程"');
+        document.querySelector('[data-testid="command-lens"]').click();
+      }})()
+    """, "22-dark-lens-panel.png"),
+    (f"""
+      (() => {{
+        window.__eg.lensStore.getState().clear();
+        document.querySelector('[data-testid="command-lens"]').click();
+        window.__eg.uiStore.getState().setView('settings');
+      }})()
+    """, "23-dark-settings.png"),
+    (f"""
+      (() => {{
+        document.querySelector('[data-testid="theme-light"]').click();
+      }})()
+    """, "24-light-settings.png"),
+    (f"""
+      (() => {{
+        document.querySelector('[data-testid="theme-dark"]').click();
+        window.__eg.uiStore.getState().setView('changes');
+      }})()
+    """, "25-dark-back-to-changes.png"),
 ]
 
 class Snapper:

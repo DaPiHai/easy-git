@@ -142,7 +142,10 @@ export function ChangesPage() {
         }
       >
         <p>{t('dialog.clean.desc')}</p>
-        <ul className="mt-eg-2 max-h-48 overflow-y-auto font-mono text-caption" data-testid="clean-list">
+        <ul
+          className="mt-eg-2 max-h-48 overflow-y-auto font-mono text-caption"
+          data-testid="clean-list"
+        >
           {(cleanTargets ?? []).map((path) => (
             <li key={path}>{path}</li>
           ))}

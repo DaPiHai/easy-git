@@ -4,6 +4,7 @@ import { Badge } from '../../components';
 import { t } from '../../lib/i18n';
 import { clampDetailWidth, useUiStore, DETAIL_DEFAULT_WIDTH } from '../../stores/uiStore';
 import { useRepoStore } from '../../stores/repoStore';
+import { CommitBox } from '../commit/CommitBox';
 import { KIND_META } from '../changes/kind';
 
 /**
@@ -75,9 +76,11 @@ export function DetailPanel() {
   );
 }
 
-/** Context-driven content (PRD §6.1): selected change now; diff W6, commits W5. */
+/** Context-driven content (PRD §6.1): commit box / file detail / empty. */
 function DetailContent() {
   const selectedChange = useRepoStore((s) => s.selectedChange);
+  const view = useUiStore((s) => s.view);
+  const hasRepo = useRepoStore((s) => s.activeId !== null);
 
   if (selectedChange) {
     const meta = KIND_META[selectedChange.kind];
@@ -103,6 +106,9 @@ function DetailContent() {
       </div>
     );
   }
+
+  // Changes view with nothing selected: the commit box lives here (F-12).
+  if (view === 'changes' && hasRepo) return <CommitBox />;
 
   return (
     <div

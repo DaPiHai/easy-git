@@ -44,6 +44,15 @@ export const commands = {
 	ignorePaths: (repoId: string, paths: string[], mode: IgnoreMode) => typedError<StatusReport, EgError>(__TAURI_INVOKE("ignore_paths", { repoId, paths, mode })),
 	/**  Restores the pre-operation content of a discard/clean (m1-plan W3). */
 	undoOperation: (repoId: string, opId: string) => typedError<StatusReport, EgError>(__TAURI_INVOKE("undo_operation", { repoId, opId })),
+	/**
+	 *  Commits the index (or amends); rejects partial staging unless confirmed
+	 *  (m1-plan R-07 / F-12).
+	 */
+	commit: (repoId: string, request: CommitRequest) => typedError<CommitOutcome, EgError>(__TAURI_INVOKE("commit", { repoId, request })),
+	/**  Reads one config key in the repo or global scope (m1-plan R-09 / F-14). */
+	configGet: (repoId: string, scope: ConfigScope, key: string) => typedError<string | null, EgError>(__TAURI_INVOKE("config_get", { repoId, scope, key })),
+	/**  Writes one config key in the repo or global scope (m1-plan R-09 / F-14). */
+	configSet: (repoId: string, scope: ConfigScope, key: string, value: string) => typedError<null, EgError>(__TAURI_INVOKE("config_set", { repoId, scope, key, value })),
 };
 
 /** Events */
@@ -73,6 +82,28 @@ export type ChangeEntry = {
 
 /**  Change classification driving the semantic icons/colors (UI doc §3.3/§9). */
 export type ChangeKind = "added" | "modified" | "deleted" | "renamed" | "conflicted" | "untracked";
+
+/**  Commit result: new commit id plus refreshed summary/status for the UI. */
+export type CommitOutcome = {
+	commitId: string,
+	amended: boolean,
+	summary: RepoSummary,
+	status: StatusReport,
+};
+
+/**
+ *  Commit request (m1-plan R-07). `allow_partial` confirms committing while
+ *  some staged files also carry unstaged edits (only the staged part lands).
+ */
+export type CommitRequest = {
+	subject: string,
+	body: string,
+	amend: boolean,
+	allowPartial: boolean,
+};
+
+/**  Which config file a get/set targets (m1-plan R-09). */
+export type ConfigScope = "repo" | "global";
 
 /**  Discard result: the fresh status plus the op id for the 撤销 toast. */
 export type DiscardOutcome = {

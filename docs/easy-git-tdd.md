@@ -246,3 +246,16 @@ IPC 序列化为 `{code, params, message_zh, hint?}`；前端 `lib/ipc/errors.ts
 | 4 | 勾选即暂存 | 行复选框=立即暂存/取消暂存（GitHub Desktop 心智），区头复选框=整区批量；提交勾选集（W4 提交框消费）W4 再引入，避免双状态混用。 |
 | 5 | clean | 仅允许未跟踪条目（其它路径拒绝并返回 UnsafeOperation），确认对话框列出将删除项，走同一快照+撤销通道。 |
 | 6 | 测试 | W3 新增 8 项集成测试，含「执行→撤销→内容等价」往返（修改/staged删除/未跟踪目录 三形态）与 double-undo 拒绝。 |
+
+### 2026-09-08 · W4 提交与命令透视偏差记录
+
+| # | 条目 | 说明 |
+| --- | --- | --- |
+| 1 | amend 的 git2 语义 | `git commit --amend` 的新提交 parent 是原提交的 parents，首个 parent 永远 ≠ 当前 tip，因此 git2 的 `commit(Some("HEAD"), …)` 校验（"current tip is not the first parent"）对所有 amend 一律拒绝（根提交 amend 同理）。实现改为：`commit(None, …)` 先建对象，再 `repo.reference(分支名, oid, force=true)` 移动分支引用（`repo.head()` 解析后即分支 ref 名）；有断言测试覆盖根/非根两种 amend 且 HEAD 不脱钩。 |
+| 2 | 部分暂存约束 | `partially_staged` = INDEX_* 与 WT_* 标志的交集文件；未确认时返回 `UnsafeOperation { confirm_required: "部分暂存：<paths>" }`，前端 CommitBox 弹确认对话框并带 `allowPartial: true` 重发；amend 天然允许（其内容以索引为准）。 |
+| 3 | 身份检查 | `signature_for` 只读 `repo.config()`（git2 已合并 repo-local + global 生效值），缺失返回明确错误；提交框挂载时经 `config_get(scope=repo)` 探测生效身份并显示「去设置」横幅，设置页 F-14 读写 global scope。 |
+| 4 | config 命令 | `config_get/config_set` 走 RepoWorker（R-09 v1：任意 key 的 get/set；Repo 用 repo.config()，Global 用 `git2::Config::open_default()`）；未做 key 白名单/代理等结构化设置项，随网络里程碑（W9）扩展。 |
+| 5 | 命令透视 | lensStore 仅内存（不持久化），由 repoStore 各动作在成功路径记录等价命令（上限 100 条、相邻去重），面板在底栏向上弹出，复制用 clipboard API + execCommand 兜底；configSet 也记录 `git config …`。 |
+| 6 | 错误人话化 R-08 | repoStore 增加 `failLoudly`：stage/discard/clean/ignore/undo 失败在保留 `error` 状态的同时走 `toast.error(标题, 细节)`；commit 的错误由 CommitBox 区分 `unsafe_operation`（确认对话框）与其它（toast）。 |
+| 7 | 设置页入口 | 顶栏齿轮开关 settings 视图（MainView 增加 `'settings'`，无激活仓库也可进入）；底栏简洁/专家按钮接 uiStore.expertMode（localStorage 持久化，v1 仅存偏好）。 |
+| 8 | 测试 | Rust +8（commit 根/非根 amend、partial 约束、空 subject、缺身份、config 往返）；前端 +17（CommitBox 5、lensStore 4、Settings 4、BottomBar lens 4）。快照 judge 发现的两处渲染问题（无仓库时详情面板不应出现提交框；合成右键事件缺坐标导致菜单锚到 (0,0)）已修复，17 张快照全部 pass。 |

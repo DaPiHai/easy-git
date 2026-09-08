@@ -2,16 +2,22 @@ import { create } from 'zustand';
 import {
   cleanExecute,
   closeRepo,
+  commitIndex,
   discardChanges,
   formatIpcError,
+  getConfig,
   getStatus,
   ignorePaths as ignorePathsIpc,
   initRepo,
   isTauriAvailable,
   openRepo as openRepoIpc,
   pickDirectory,
+  setConfig,
   stagePaths as stagePathsIpc,
   undoOperation as undoOperationIpc,
+  type CommitRequest,
+  type CommitOutcome,
+  type ConfigScope,
   type EgErrorLike,
   type HumanizedError,
   type IgnoreMode,
@@ -21,6 +27,8 @@ import {
 } from '../lib/ipc/commands';
 import type { RepoChanged } from '../lib/ipc/bindings';
 import type { ChangeEntry } from '../lib/ipc/commands';
+import { useLensStore } from './lensStore';
+import { toast } from './toastStore';
 
 export interface RepoMeta {
   path: string;
@@ -54,6 +62,15 @@ function toMeta(summary: RepoSummary): RepoMeta {
 
 function humanize(error: unknown): HumanizedError {
   return formatIpcError(error as EgErrorLike);
+}
+
+/** Shell-quotes a path for the command lens (F-13). */
+function q(value: string): string {
+  return `"${value.replace(/([$"\\`])/g, '\\$1')}"`;
+}
+
+function recordLens(command: string): void {
+  useLensStore.getState().record(command);
 }
 
 export interface RepoSeed {
@@ -105,6 +122,15 @@ interface RepoState {
   previewClean: () => Promise<string[]>;
   ignorePaths: (paths: string[], mode: IgnoreMode) => Promise<void>;
   undoOperation: (opId: string) => Promise<void>;
+  /**
+   * W4 commit (R-07/F-12). Rejects with the raw EgError so the commit box can
+   * react to `unsafe_operation` (partial staging) distinctly; success updates
+   * status + summary and clears the file selection.
+   */
+  commit: (request: CommitRequest) => Promise<CommitOutcome | null>;
+  /** Config access for the settings page (R-09/F-14); repo id = active repo. */
+  configGet: (scope: ConfigScope, key: string) => Promise<string | null>;
+  configSet: (scope: ConfigScope, key: string, value: string) => Promise<void>;
   /** Test seam: seed state directly (tests / snapshot harness). */
   seed: (partial: RepoSeed) => void;
 }
@@ -133,6 +159,13 @@ export const useRepoStore = create<RepoState>()((set, get) => {
     } finally {
       set({ statusLoading: false });
     }
+  };
+
+  /** R-08: operation failures surface as a toast, not just the wizard banner. */
+  const failLoudly = (error: unknown): void => {
+    const humanized = humanize(error);
+    set({ error: humanized });
+    toast.error(humanized.title, humanized.detail);
   };
 
   return {
@@ -209,7 +242,7 @@ export const useRepoStore = create<RepoState>()((set, get) => {
       try {
         await closeRepo(repoId);
       } catch (error) {
-        set({ error: humanize(error) });
+        failLoudly(error);
         return;
       }
       set((s) => {
@@ -241,8 +274,13 @@ export const useRepoStore = create<RepoState>()((set, get) => {
       try {
         const status = await stagePathsIpc(activeId, paths, mode);
         set({ status });
+        recordLens(
+          mode === 'stage'
+            ? `git add -- ${paths.map(q).join(' ')}`
+            : `git restore --staged -- ${paths.map(q).join(' ')}`,
+        );
       } catch (error) {
-        set({ error: humanize(error) });
+        failLoudly(error);
       }
     },
 
@@ -252,9 +290,10 @@ export const useRepoStore = create<RepoState>()((set, get) => {
       try {
         const outcome = await discardChanges(activeId, paths);
         set({ status: outcome.status });
+        recordLens(`git restore --source=HEAD --staged --worktree -- ${paths.map(q).join(' ')}`);
         return outcome.opId;
       } catch (error) {
-        set({ error: humanize(error) });
+        failLoudly(error);
         return null;
       }
     },
@@ -265,9 +304,10 @@ export const useRepoStore = create<RepoState>()((set, get) => {
       try {
         const outcome = await cleanExecute(activeId, paths);
         set({ status: outcome.status });
+        recordLens(`git clean -f -- ${paths.map(q).join(' ')}`);
         return outcome.opId;
       } catch (error) {
-        set({ error: humanize(error) });
+        failLoudly(error);
         return null;
       }
     },
@@ -278,7 +318,7 @@ export const useRepoStore = create<RepoState>()((set, get) => {
       try {
         return await import('../lib/ipc/commands').then((m) => m.cleanPreview(activeId));
       } catch (error) {
-        set({ error: humanize(error) });
+        failLoudly(error);
         return [];
       }
     },
@@ -289,8 +329,10 @@ export const useRepoStore = create<RepoState>()((set, get) => {
       try {
         const status = await ignorePathsIpc(activeId, paths, mode);
         set({ status });
+        const rules = paths.map((p) => (mode === 'by_path' ? `/${p}` : `*.${p.split('.').pop()}`));
+        recordLens(`echo ${q(rules.join('\n'))} >> .gitignore`);
       } catch (error) {
-        set({ error: humanize(error) });
+        failLoudly(error);
       }
     },
 
@@ -301,8 +343,36 @@ export const useRepoStore = create<RepoState>()((set, get) => {
         const status = await undoOperationIpc(activeId, opId);
         set({ status });
       } catch (error) {
-        set({ error: humanize(error) });
+        failLoudly(error);
       }
+    },
+
+    commit: async (request) => {
+      const { activeId } = get();
+      if (!activeId) return null;
+      const outcome = await commitIndex(activeId, request);
+      set((s) => ({
+        status: outcome.status,
+        repos: { ...s.repos, [activeId]: outcome.summary },
+        selectedChange: null,
+      }));
+      const flag = request.amend ? '--amend ' : '';
+      recordLens(`git commit ${flag}-m ${q(request.subject)}`);
+      return outcome;
+    },
+
+    configGet: async (scope, key) => {
+      const { activeId } = get();
+      if (!activeId) return null;
+      return getConfig(activeId, scope, key);
+    },
+
+    configSet: async (scope, key, value) => {
+      const { activeId } = get();
+      if (!activeId) return;
+      await setConfig(activeId, scope, key, value);
+      const flag = scope === 'global' ? '--global ' : '';
+      recordLens(`git config ${flag}${key} ${q(value)}`);
     },
 
     onRepoChanged: (repoId) => {

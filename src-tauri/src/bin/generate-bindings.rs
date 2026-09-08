@@ -21,6 +21,9 @@ fn main() {
             easy_git::commands::clean_execute,
             easy_git::commands::ignore_paths,
             easy_git::commands::undo_operation,
+            easy_git::commands::commit,
+            easy_git::commands::config_get,
+            easy_git::commands::config_set,
         ])
         .events(collect_events![easy_git::events::RepoChanged])
         .error_handling(ErrorHandlingMode::Result);

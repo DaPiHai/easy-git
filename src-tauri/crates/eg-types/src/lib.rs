@@ -9,7 +9,8 @@ pub use error::EgError;
 mod dto;
 
 pub use dto::{
-    AppVersion, ChangeEntry, ChangeKind, IgnoreMode, RepoId, RepoSummary, StageMode, StatusReport,
+    AppVersion, ChangeEntry, ChangeKind, CommitOutcome, CommitRequest, ConfigScope, IgnoreMode,
+    RepoId, RepoSummary, StageMode, StatusReport,
 };
 
 #[cfg(test)]

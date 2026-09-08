@@ -1,4 +1,11 @@
-import { ArrowDownToLine, ArrowUpToLine, CloudDownload, PanelRight, Search } from 'lucide-react';
+import {
+  ArrowDownToLine,
+  ArrowUpToLine,
+  CloudDownload,
+  PanelRight,
+  Search,
+  Settings,
+} from 'lucide-react';
 import { t } from '../../lib/i18n';
 import { useUiStore, type MainView } from '../../stores/uiStore';
 import { Button } from '../../components/Button';
@@ -66,6 +73,16 @@ export function TopBar() {
         <ThemeToggle />
         <Button variant="tertiary" size="sm" disabled aria-label={t('topbar.search')}>
           <Search className="size-4" aria-hidden />
+        </Button>
+        <Button
+          variant="tertiary"
+          size="sm"
+          onClick={() => setView(view === 'settings' ? 'changes' : 'settings')}
+          aria-label={t('settings.title')}
+          aria-pressed={view === 'settings'}
+          data-testid="settings-toggle"
+        >
+          <Settings className="size-4" aria-hidden />
         </Button>
         <Button
           variant="tertiary"

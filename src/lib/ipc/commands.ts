@@ -7,6 +7,9 @@ import { open as dialogOpen } from '@tauri-apps/plugin-dialog';
 import {
   commands,
   type AppVersion,
+  type CommitOutcome,
+  type CommitRequest,
+  type ConfigScope,
   type DiscardOutcome,
   type EgError,
   type IgnoreMode,
@@ -19,6 +22,9 @@ import { humanizeEgError } from './errors';
 
 export type {
   AppVersion,
+  CommitOutcome,
+  CommitRequest,
+  ConfigScope,
   DiscardOutcome,
   EgError,
   IgnoreMode,
@@ -112,6 +118,35 @@ export async function undoOperation(repoId: string, opId: string): Promise<Statu
   const result = await commands.undoOperation(repoId, opId);
   if (result.status === 'error') throw result.error;
   return result.data;
+}
+
+/** Commits the index (or amends); throws EgError on guard failures (R-07). */
+export async function commitIndex(repoId: string, request: CommitRequest): Promise<CommitOutcome> {
+  const result = await commands.commit(repoId, request);
+  if (result.status === 'error') throw result.error;
+  return result.data;
+}
+
+/** Reads one config key (repo scope falls back to global inside git2). */
+export async function getConfig(
+  repoId: string,
+  scope: ConfigScope,
+  key: string,
+): Promise<string | null> {
+  const result = await commands.configGet(repoId, scope, key);
+  if (result.status === 'error') throw result.error;
+  return result.data;
+}
+
+/** Writes one config key in the requested scope. */
+export async function setConfig(
+  repoId: string,
+  scope: ConfigScope,
+  key: string,
+  value: string,
+): Promise<void> {
+  const result = await commands.configSet(repoId, scope, key, value);
+  if (result.status === 'error') throw result.error;
 }
 
 /** Native directory picker; null when cancelled or outside the Tauri shell. */

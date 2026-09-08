@@ -12,6 +12,7 @@ import { ChangesPage } from '../changes/ChangesPage';
 import { HistoryPage } from '../history/HistoryPage';
 import { BranchesPage } from '../branches/BranchesPage';
 import { StoragePage } from '../storage/StoragePage';
+import { SettingsPage } from '../settings/SettingsPage';
 
 /** PRD §6.1 frame: top bar / repo sidebar / main view / detail panel / bottom bar. */
 export function AppShell() {
@@ -49,7 +50,9 @@ export function AppShell() {
       <div className="flex min-h-0 flex-1">
         <RepoSidebar />
         <main className="min-w-0 flex-1">
-          {!hasActiveRepo ? (
+          {view === 'settings' ? (
+            <SettingsPage />
+          ) : !hasActiveRepo ? (
             <OpenRepoWizard />
           ) : (
             <>

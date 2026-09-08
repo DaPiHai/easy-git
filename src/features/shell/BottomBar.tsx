@@ -1,12 +1,16 @@
-import { ChevronDown, ChevronsRight, Redo2, Undo2 } from 'lucide-react';
+import { Redo2, Undo2, ChevronDown } from 'lucide-react';
 import { t } from '../../lib/i18n';
 import { useUiStore } from '../../stores/uiStore';
+import { LensPanel } from './LensPanel';
 
 /**
  * 28px bottom bar (UI doc §5.1): mode switch · undo/redo · command lens · task progress.
  * Undo/redo and tasks activate with eg-safety (W9); mode switch with settings (W4).
  */
 export function BottomBar() {
+  const expertMode = useUiStore((s) => s.expertMode);
+  const toggleExpertMode = useUiStore((s) => s.toggleExpertMode);
+
   return (
     <footer
       className="flex shrink-0 items-center gap-eg-4 border-t border-hairline bg-canvas px-eg-3 text-micro text-ink-subtle"
@@ -14,11 +18,12 @@ export function BottomBar() {
     >
       <button
         type="button"
-        disabled
-        className="flex items-center gap-1 font-medium disabled:pointer-events-none disabled:opacity-40"
+        onClick={toggleExpertMode}
+        className="flex items-center gap-1 font-medium rounded-md px-1.5 py-0.5 hover:bg-surface-2 hover:text-ink"
         data-testid="mode-switch"
+        title={t('settings.mode.desc')}
       >
-        {t('bottom.mode.simple')}
+        {expertMode ? t('bottom.mode.expert') : t('bottom.mode.simple')}
         <ChevronDown className="size-3" aria-hidden />
       </button>
 
@@ -43,15 +48,7 @@ export function BottomBar() {
         </button>
       </div>
 
-      <button
-        type="button"
-        disabled
-        className="flex items-center gap-1 disabled:pointer-events-none disabled:opacity-40"
-        data-testid="command-lens"
-      >
-        {t('bottom.commandLens')}
-        <ChevronsRight className="size-3" aria-hidden />
-      </button>
+      <LensPanel />
 
       <div className="ml-auto flex items-center gap-eg-4" data-testid="status-area">
         <span className="text-ink-tertiary">{t('bottom.task.none')}</span>

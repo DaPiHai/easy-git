@@ -14,11 +14,11 @@ use std::sync::mpsc::{channel, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use eg_types::{EgError, IgnoreMode, RepoId, RepoSummary, StageMode, StatusReport};
+use eg_types::{ConfigScope, EgError, IgnoreMode, RepoId, RepoSummary, StageMode, StatusReport};
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use uuid::Uuid;
 
-use super::{ops, repo, status};
+use super::{commit, config, ops, repo, status};
 
 /// Quiet period before a burst of filesystem events triggers one change event.
 pub const FS_DEBOUNCE: Duration = Duration::from_millis(300);
@@ -57,6 +57,21 @@ enum RepoCommand {
         op_id: String,
         safety: Arc<eg_safety::Safety>,
         reply: Sender<Result<StatusReport, EgError>>,
+    },
+    Commit {
+        request: eg_types::CommitRequest,
+        reply: Sender<Result<eg_types::CommitOutcome, EgError>>,
+    },
+    ConfigGet {
+        scope: ConfigScope,
+        key: String,
+        reply: Sender<Result<Option<String>, EgError>>,
+    },
+    ConfigSet {
+        scope: ConfigScope,
+        key: String,
+        value: String,
+        reply: Sender<Result<(), EgError>>,
     },
     Close(Sender<()>),
 }
@@ -136,6 +151,31 @@ impl WorkerHandle {
         self.request(|reply| RepoCommand::Undo {
             op_id,
             safety,
+            reply,
+        })
+    }
+
+    pub fn commit(
+        &self,
+        request: eg_types::CommitRequest,
+    ) -> Result<eg_types::CommitOutcome, EgError> {
+        self.request(|reply| RepoCommand::Commit { request, reply })
+    }
+
+    pub fn config_get(&self, scope: ConfigScope, key: String) -> Result<Option<String>, EgError> {
+        self.request(|reply| RepoCommand::ConfigGet { scope, key, reply })
+    }
+
+    pub fn config_set(
+        &self,
+        scope: ConfigScope,
+        key: String,
+        value: String,
+    ) -> Result<(), EgError> {
+        self.request(|reply| RepoCommand::ConfigSet {
+            scope,
+            key,
+            value,
             reply,
         })
     }
@@ -316,6 +356,20 @@ fn run_loop(
                     ops::undo_operation(&repo, &repo_id, &safety, &op_id)
                         .and_then(|()| status::status(&repo_id, &repo)),
                 );
+            }
+            Ok(RepoCommand::Commit { request, reply }) => {
+                let _ = reply.send(commit::commit(&repo, &repo_id, &request));
+            }
+            Ok(RepoCommand::ConfigGet { scope, key, reply }) => {
+                let _ = reply.send(config::config_get(Some(&repo), scope, &key));
+            }
+            Ok(RepoCommand::ConfigSet {
+                scope,
+                key,
+                value,
+                reply,
+            }) => {
+                let _ = reply.send(config::config_set(Some(&repo), scope, &key, &value));
             }
             Ok(RepoCommand::Close(tx)) => {
                 let _ = tx.send(());

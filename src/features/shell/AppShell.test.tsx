@@ -23,6 +23,15 @@ vi.mock('../../lib/ipc/commands', () => ({
   closeRepo: vi.fn(),
   getStatus: (repoId: string) => getStatusMock(repoId),
   pickDirectory: vi.fn(async () => null),
+  stagePaths: vi.fn(),
+  discardChanges: vi.fn(),
+  cleanPreview: vi.fn(async () => []),
+  cleanExecute: vi.fn(),
+  ignorePaths: vi.fn(),
+  undoOperation: vi.fn(),
+  commitIndex: vi.fn(),
+  getConfig: vi.fn(async () => 'tester'),
+  setConfig: vi.fn(async () => undefined),
 }));
 
 vi.mock('../../lib/ipc/bindings', () => ({

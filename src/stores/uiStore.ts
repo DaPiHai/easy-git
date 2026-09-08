@@ -3,9 +3,10 @@ import { getAppVersion } from '../lib/ipc/commands';
 
 export type ThemeMode = 'system' | 'light' | 'dark';
 export type ResolvedTheme = 'light' | 'dark';
-export type MainView = 'changes' | 'history' | 'branches' | 'storage';
+export type MainView = 'changes' | 'history' | 'branches' | 'storage' | 'settings';
 
 export const THEME_MODE_STORAGE_KEY = 'eg.theme.mode';
+export const EXPERT_MODE_STORAGE_KEY = 'eg.mode.expert';
 
 /** Detail panel drag range (UI doc §5.1). */
 export const DETAIL_DEFAULT_WIDTH = 360;
@@ -48,6 +49,10 @@ interface UiState {
 
   view: MainView;
   setView: (view: MainView) => void;
+
+  /** 简洁/专家 dual mode (PRD §1.3); v1 persists the choice and flips labels. */
+  expertMode: boolean;
+  toggleExpertMode: () => void;
 
   sidebarCollapsed: boolean;
   toggleSidebar: () => void;
@@ -110,6 +115,18 @@ export const useUiStore = create<UiState>()((set, get) => {
 
     view: 'changes',
     setView: (view) => set({ view }),
+
+    expertMode: localStorage.getItem(EXPERT_MODE_STORAGE_KEY) === 'true',
+    toggleExpertMode: () =>
+      set((s) => {
+        const expertMode = !s.expertMode;
+        try {
+          localStorage.setItem(EXPERT_MODE_STORAGE_KEY, String(expertMode));
+        } catch {
+          // Persistence is best-effort.
+        }
+        return { expertMode };
+      }),
 
     sidebarCollapsed: false,
     toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),

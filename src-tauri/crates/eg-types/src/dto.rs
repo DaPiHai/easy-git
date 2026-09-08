@@ -92,3 +92,32 @@ impl StatusReport {
         self.staged.is_empty() && self.unstaged.is_empty() && self.conflicted.is_empty()
     }
 }
+
+/// Commit request (m1-plan R-07). `allow_partial` confirms committing while
+/// some staged files also carry unstaged edits (only the staged part lands).
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitRequest {
+    pub subject: String,
+    pub body: String,
+    pub amend: bool,
+    pub allow_partial: bool,
+}
+
+/// Commit result: new commit id plus refreshed summary/status for the UI.
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitOutcome {
+    pub commit_id: String,
+    pub amended: bool,
+    pub summary: RepoSummary,
+    pub status: StatusReport,
+}
+
+/// Which config file a get/set targets (m1-plan R-09).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum ConfigScope {
+    Repo,
+    Global,
+}

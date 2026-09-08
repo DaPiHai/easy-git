@@ -1,6 +1,8 @@
 //! eg-git-core: the only place git logic lives (besides eg-safety).
 //! Every behavior must match real git and ship with assertion tests.
 
+pub mod commit;
+pub mod config;
 pub mod ops;
 pub mod repo;
 pub mod status;

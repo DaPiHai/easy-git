@@ -4,7 +4,10 @@ use std::sync::Arc;
 use eg_git_core::worker::{ChangeSink, DiscardOutcome};
 use eg_git_core::RepoManager;
 use eg_safety::Safety;
-use eg_types::{AppVersion, EgError, IgnoreMode, RepoSummary, StageMode, StatusReport};
+use eg_types::{
+    AppVersion, CommitOutcome, CommitRequest, ConfigScope, EgError, IgnoreMode, RepoSummary,
+    StageMode, StatusReport,
+};
 use tauri::{AppHandle, State};
 use tauri_specta::Event;
 
@@ -154,6 +157,46 @@ pub async fn undo_operation(
     let handle = manager.get(&repo_id)?;
     let safety = std::sync::Arc::new(safety.inner().clone());
     run_blocking(move || handle.undo(op_id, safety)).await
+}
+
+/// Commits the index (or amends); rejects partial staging unless confirmed
+/// (m1-plan R-07 / F-12).
+#[tauri::command]
+#[specta::specta]
+pub async fn commit(
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+    request: CommitRequest,
+) -> Result<CommitOutcome, EgError> {
+    let handle = manager.get(&repo_id)?;
+    run_blocking(move || handle.commit(request)).await
+}
+
+/// Reads one config key in the repo or global scope (m1-plan R-09 / F-14).
+#[tauri::command]
+#[specta::specta]
+pub async fn config_get(
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+    scope: ConfigScope,
+    key: String,
+) -> Result<Option<String>, EgError> {
+    let handle = manager.get(&repo_id)?;
+    run_blocking(move || handle.config_get(scope, key)).await
+}
+
+/// Writes one config key in the repo or global scope (m1-plan R-09 / F-14).
+#[tauri::command]
+#[specta::specta]
+pub async fn config_set(
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+    scope: ConfigScope,
+    key: String,
+    value: String,
+) -> Result<(), EgError> {
+    let handle = manager.get(&repo_id)?;
+    run_blocking(move || handle.config_set(scope, key, value)).await
 }
 
 async fn run_blocking<T, F>(f: F) -> Result<T, EgError>

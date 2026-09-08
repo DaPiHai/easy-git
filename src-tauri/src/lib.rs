@@ -32,6 +32,9 @@ pub fn run() {
             commands::clean_execute,
             commands::ignore_paths,
             commands::undo_operation,
+            commands::commit,
+            commands::config_get,
+            commands::config_set,
         ])
         .events(collect_events![events::RepoChanged])
         .error_handling(ErrorHandlingMode::Result);
