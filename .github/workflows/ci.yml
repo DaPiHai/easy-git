@@ -58,7 +58,7 @@ jobs:
       - name: regenerate bindings and fail on drift
         working-directory: src-tauri
         run: |
-          cargo run --bin generate-bindings
+          cargo run --features gen-bindings --bin generate-bindings
           git diff --exit-code -- ../src/lib/ipc/bindings.ts
       - name: typecheck
         run: pnpm typecheck

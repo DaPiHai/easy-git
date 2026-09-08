@@ -259,3 +259,4 @@ IPC 序列化为 `{code, params, message_zh, hint?}`；前端 `lib/ipc/errors.ts
 | 6 | 错误人话化 R-08 | repoStore 增加 `failLoudly`：stage/discard/clean/ignore/undo 失败在保留 `error` 状态的同时走 `toast.error(标题, 细节)`；commit 的错误由 CommitBox 区分 `unsafe_operation`（确认对话框）与其它（toast）。 |
 | 7 | 设置页入口 | 顶栏齿轮开关 settings 视图（MainView 增加 `'settings'`，无激活仓库也可进入）；底栏简洁/专家按钮接 uiStore.expertMode（localStorage 持久化，v1 仅存偏好）。 |
 | 8 | 测试 | Rust +8（commit 根/非根 amend、partial 约束、空 subject、缺身份、config 往返）；前端 +17（CommitBox 5、lensStore 4、Settings 4、BottomBar lens 4）。快照 judge 发现的两处渲染问题（无仓库时详情面板不应出现提交框；合成右键事件缺坐标导致菜单锚到 (0,0)）已修复，17 张快照全部 pass。 |
+| 9 | deb 打包排除辅助 bin | `generate-bindings` bin 曾被打进 deb（/usr/bin 下出现两个可执行）。改为 `required-features = ["gen-bindings"]`：`tauri build` 不启用该 feature 时 cargo 直接跳过该 bin；CI 与手动生成改用 `cargo run --features gen-bindings --bin generate-bindings`。 |

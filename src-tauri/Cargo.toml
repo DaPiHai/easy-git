@@ -30,9 +30,22 @@ rust-version.workspace = true
 description = "EasyGit — a beginner-friendly visual Git desktop app"
 default-run = "easy-git"
 
+[features]
+# Opt-in for the bindings generator so `tauri build` skips shipping it.
+gen-bindings = []
+
 [lib]
 name = "easy_git"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "easy-git"
+path = "src/main.rs"
+
+[[bin]]
+name = "generate-bindings"
+path = "src/bin/generate-bindings.rs"
+required-features = ["gen-bindings"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
