@@ -18,7 +18,7 @@ use eg_types::{ConfigScope, EgError, IgnoreMode, RepoId, RepoSummary, StageMode,
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use uuid::Uuid;
 
-use super::{commit, config, diff, log, ops, repo, status};
+use super::{commit, config, diff, log, ops, refs, repo, stash, status};
 
 /// Quiet period before a burst of filesystem events triggers one change event.
 pub const FS_DEBOUNCE: Duration = Duration::from_millis(300);
@@ -93,6 +93,59 @@ enum RepoCommand {
     StageLines {
         request: eg_types::StageLinesRequest,
         reply: Sender<Result<StatusReport, EgError>>,
+    },
+    BranchList {
+        reply: Sender<Result<Vec<eg_types::BranchInfo>, EgError>>,
+    },
+    BranchCreate {
+        name: String,
+        oid: Option<String>,
+        reply: Sender<Result<eg_types::BranchInfo, EgError>>,
+    },
+    BranchRename {
+        old_name: String,
+        new_name: String,
+        reply: Sender<Result<(), EgError>>,
+    },
+    BranchDelete {
+        name: String,
+        safety: Arc<eg_safety::Safety>,
+        reply: Sender<Result<String, EgError>>,
+    },
+    BranchSwitch {
+        name: String,
+        reply: Sender<Result<StatusReport, EgError>>,
+    },
+    TagList {
+        reply: Sender<Result<Vec<eg_types::TagInfo>, EgError>>,
+    },
+    TagCreate {
+        name: String,
+        oid: String,
+        message: Option<String>,
+        reply: Sender<Result<eg_types::TagInfo, EgError>>,
+    },
+    TagDelete {
+        name: String,
+        safety: Arc<eg_safety::Safety>,
+        reply: Sender<Result<String, EgError>>,
+    },
+    StashList {
+        reply: Sender<Result<Vec<eg_types::StashEntry>, EgError>>,
+    },
+    StashPush {
+        message: Option<String>,
+        include_untracked: bool,
+        reply: Sender<Result<StatusReport, EgError>>,
+    },
+    StashApply {
+        index: u32,
+        pop: bool,
+        reply: Sender<Result<StatusReport, EgError>>,
+    },
+    StashDrop {
+        index: u32,
+        reply: Sender<Result<Vec<eg_types::StashEntry>, EgError>>,
     },
     Close(Sender<()>),
 }
@@ -237,6 +290,96 @@ impl WorkerHandle {
         self.request(|reply| RepoCommand::StageLines { request, reply })
     }
 
+    pub fn branch_list(&self) -> Result<Vec<eg_types::BranchInfo>, EgError> {
+        self.request(|reply| RepoCommand::BranchList { reply })
+    }
+
+    pub fn branch_create(
+        &self,
+        name: String,
+        oid: Option<String>,
+    ) -> Result<eg_types::BranchInfo, EgError> {
+        self.request(|reply| RepoCommand::BranchCreate { name, oid, reply })
+    }
+
+    pub fn branch_rename(&self, old_name: String, new_name: String) -> Result<(), EgError> {
+        self.request(|reply| RepoCommand::BranchRename {
+            old_name,
+            new_name,
+            reply,
+        })
+    }
+
+    pub fn branch_delete(
+        &self,
+        name: String,
+        safety: Arc<eg_safety::Safety>,
+    ) -> Result<String, EgError> {
+        self.request(|reply| RepoCommand::BranchDelete {
+            name,
+            safety,
+            reply,
+        })
+    }
+
+    pub fn branch_switch(&self, name: String) -> Result<StatusReport, EgError> {
+        self.request(|reply| RepoCommand::BranchSwitch { name, reply })
+    }
+
+    pub fn tag_list(&self) -> Result<Vec<eg_types::TagInfo>, EgError> {
+        self.request(|reply| RepoCommand::TagList { reply })
+    }
+
+    pub fn tag_create(
+        &self,
+        name: String,
+        oid: String,
+        message: Option<String>,
+    ) -> Result<eg_types::TagInfo, EgError> {
+        self.request(|reply| RepoCommand::TagCreate {
+            name,
+            oid,
+            message,
+            reply,
+        })
+    }
+
+    pub fn tag_delete(
+        &self,
+        name: String,
+        safety: Arc<eg_safety::Safety>,
+    ) -> Result<String, EgError> {
+        self.request(|reply| RepoCommand::TagDelete {
+            name,
+            safety,
+            reply,
+        })
+    }
+
+    pub fn stash_list(&self) -> Result<Vec<eg_types::StashEntry>, EgError> {
+        self.request(|reply| RepoCommand::StashList { reply })
+    }
+
+    pub fn stash_push(
+        &self,
+        message: Option<String>,
+        include_untracked: bool,
+    ) -> Result<StatusReport, EgError> {
+        self.request(|reply| RepoCommand::StashPush {
+            message,
+            include_untracked,
+            reply,
+        })
+    }
+
+    pub fn stash_apply(&self, index: u32, pop: bool) -> Result<StatusReport, EgError> {
+        self.request(|reply| RepoCommand::StashApply { index, pop, reply })
+    }
+
+    pub fn stash_drop(&self, index: u32) -> Result<Vec<eg_types::StashEntry>, EgError> {
+        self.request(|reply| RepoCommand::StashDrop { index, reply })
+    }
+
     fn request<T>(
         &self,
         make: impl FnOnce(Sender<Result<T, EgError>>) -> RepoCommand,
@@ -319,7 +462,7 @@ pub fn spawn(
 }
 
 fn run_loop(
-    repo: git2::Repository,
+    mut repo: git2::Repository,
     rx: std::sync::mpsc::Receiver<RepoCommand>,
     fs_rx: std::sync::mpsc::Receiver<notify::Result<notify::Event>>,
     workdir: PathBuf,
@@ -447,6 +590,68 @@ fn run_loop(
             }
             Ok(RepoCommand::StageLines { request, reply }) => {
                 let _ = reply.send(diff::stage_lines(&repo, &repo_id, &request));
+            }
+            Ok(RepoCommand::BranchList { reply }) => {
+                let _ = reply.send(refs::list_branches_info(&repo));
+            }
+            Ok(RepoCommand::BranchCreate { name, oid, reply }) => {
+                let _ = reply.send(refs::create_branch(&repo, &name, oid.as_deref()));
+            }
+            Ok(RepoCommand::BranchRename {
+                old_name,
+                new_name,
+                reply,
+            }) => {
+                let _ = reply.send(refs::rename_branch(&repo, &old_name, &new_name));
+            }
+            Ok(RepoCommand::BranchDelete {
+                name,
+                safety,
+                reply,
+            }) => {
+                let _ = reply.send(refs::delete_branch(&repo, &repo_id, &safety, &name));
+            }
+            Ok(RepoCommand::BranchSwitch { name, reply }) => {
+                let _ = reply.send(refs::switch_branch(&repo, &repo_id, &name));
+            }
+            Ok(RepoCommand::TagList { reply }) => {
+                let _ = reply.send(refs::list_tags(&repo));
+            }
+            Ok(RepoCommand::TagCreate {
+                name,
+                oid,
+                message,
+                reply,
+            }) => {
+                let _ = reply.send(refs::create_tag(&repo, &name, &oid, message.as_deref()));
+            }
+            Ok(RepoCommand::TagDelete {
+                name,
+                safety,
+                reply,
+            }) => {
+                let _ = reply.send(refs::delete_tag(&repo, &repo_id, &safety, &name));
+            }
+            Ok(RepoCommand::StashList { reply }) => {
+                let _ = reply.send(stash::list_stashes(&mut repo));
+            }
+            Ok(RepoCommand::StashPush {
+                message,
+                include_untracked,
+                reply,
+            }) => {
+                let _ = reply.send(stash::stash_push(
+                    &mut repo,
+                    &repo_id,
+                    message.as_deref(),
+                    include_untracked,
+                ));
+            }
+            Ok(RepoCommand::StashApply { index, pop, reply }) => {
+                let _ = reply.send(stash::stash_apply(&mut repo, &repo_id, index, pop));
+            }
+            Ok(RepoCommand::StashDrop { index, reply }) => {
+                let _ = reply.send(stash::stash_drop(&mut repo, index));
             }
             Ok(RepoCommand::Close(tx)) => {
                 let _ = tx.send(());

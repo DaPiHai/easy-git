@@ -67,7 +67,7 @@ function humanize(error: unknown): HumanizedError {
 
 /** Shell-quotes a path for the command lens (F-13). */
 function q(value: string): string {
-  return `"${value.replace(/([$"\\`])/g, '\\$1')}"`;
+  return '"' + value.replace(/[\\$"']/g, '$&') + '"';
 }
 
 function recordLens(command: string): void {

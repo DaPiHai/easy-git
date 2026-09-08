@@ -288,3 +288,17 @@ IPC 序列化为 `{code, params, message_zh, hint?}`；前端 `lib/ipc/errors.ts
 | 7 | 前端结构 | diffStore 单槽（request+data），open 对 `isTauriAvailable()==false` 早退且不清空（快照 harness 可 seed，本次 judge 首轮 fail 根因即此）；选中行携带来源（staged→index / unstaged→worktree）进入详情面板；提交详情文件点击→只读 commit 源 diff + 返回按钮，detailFile 提升到 historyStore 供 harness 驱动。 |
 | 8 | 性能 | 后端每文件行数上限 5000（truncated 标记）；前端 >600 行折叠显示前 300 行（展开全部），折叠期间未挂载的行不进 DOM；diff 行代码不折行（横向滚动），退出标准「5000 行不卡」由折叠+截断双保险达成。 |
 | 9 | 测试 | Rust +6（三源 diff、词级 span、二进制/截断、整 hunk 暂存往返、部分行暂存 index 内容断言、双 hunk 选择性暂存、unstage 还原）；前端 +10（diffStore 4、DiffView 6）。快照 29-31 judge 通过。 |
+
+### 2026-09-08 · W7 分支 / 标签 / 储藏偏差记录
+
+| # | 条目 | 说明 |
+| --- | --- | --- |
+| 1 | 回收站模型 | eg-safety 增加 `OpKind::RefDelete`（保持 Copy，分支/标签名放 `paths[0]`），原引用目标存 `refs/easy-git/trash/branch-<op_id>` 或 `tag-<op_id>`（名字前缀区分类型）。撤销=从 trash ref 重建 refs/heads|tags/<name> 并删除 trash 引用；附注标签的 trash ref 指向 tag 对象，恢复后仍是附注标签。当前分支不可删（与 git 一致）。 |
+| 2 | switch 脏区检测 | 切换前自查 status：已暂存/未暂存的**已跟踪**变更一律拒绝（DirtyWorktree 带路径）；未跟踪文件仅在目标分支包含同路径时拒绝（否则放行）。checkout 用安全模式（非 force），冲突兜底也报 DirtyWorktree。前端收到 dirty 弹「储藏并切换」对话框（F-22 主动建议储藏）。 |
+| 3 | stash 细节 | `stash_save2` 需要 `&mut Repository`（worker 的 repo 改为 mut 绑定）；干净工作区提前拒绝（libgit2 报 NotFound 太晦涩）；身份缺省回退 `EasyGit <easygit@invalid>`（stash 不涉作者归属）。apply 用 `reinstantiate_index` 保证「存→取」索引状态无损（退出标准）。drop 无撤销（libgit2 无 stash store API），以红色确认对话框兜底，记入已知偏差。 |
+| 4 | 上游设置顺延 | R-15 的「上游设置」推迟到 W9（远程里程碑）：无 remote 时上游无意义，BranchInfo 已预留 upstream/ahead/behind 字段与 UI 展示。 |
+| 5 | F-23 命令面板完整版顺延 | Ctrl+K 保持仓库切换；操作/分支/文件四类搜索随 M2。 |
+| 6 | fork API 坑 | 本 fork：`find_branch(name, BranchType)` 无 Option 包装；`tag.tagger()`/`tag.message()` 返回 Option（非 Result）；`stash_apply` 的方法名是 `reinstantiate_index`（上游是 reinstate_index）；`references_glob` 可用。 |
+| 7 | q() 反引号 bug | 模板字符串里的正则字符类含反引号（/([$"\\`])/）会提前闭合模板字面量，导致 shell 引用函数 q() 丢结尾引号——W4 起所有 lens 命令的引号都不闭合（本次 W7 测试断言暴露）。改为纯字符串拼接 + 正则 `[\\$"']`。 |
+| 8 | 分支看板形态 | judge 建议后去掉了独立 hero 卡：当前分支作为列表首行（✓ 图标 + primary 高亮 + 当前分支徽标），计数徽标与列表一致；当前分支右键仅重命名（不提供切换/删除）。 |
+| 9 | 测试 | Rust +5（branch CRUD/重命名移动 HEAD/回收站找回/当前分支拒删、switch 脏区与未跟踪冲突、tag 轻量+附注+回收站、stash 无损往返含 index reinstated、untracked stash）；前端 +6（refsStore：refresh/创建+lens/切换同步/dirty 无 toast/删除撤销链路/stash push）。快照 32-33 judge 通过（含「列表含 main」整改复验）。 |

@@ -6,7 +6,9 @@ pub mod config;
 pub mod diff;
 pub mod log;
 pub mod ops;
+pub mod refs;
 pub mod repo;
+pub mod stash;
 pub mod status;
 pub mod worker;
 

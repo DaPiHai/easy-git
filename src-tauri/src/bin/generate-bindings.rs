@@ -29,6 +29,18 @@ fn main() {
             easy_git::commands::list_branches,
             easy_git::commands::diff_file,
             easy_git::commands::stage_lines,
+            easy_git::commands::branch_list,
+            easy_git::commands::branch_create,
+            easy_git::commands::branch_rename,
+            easy_git::commands::branch_delete,
+            easy_git::commands::branch_switch,
+            easy_git::commands::tag_list,
+            easy_git::commands::tag_create,
+            easy_git::commands::tag_delete,
+            easy_git::commands::stash_list,
+            easy_git::commands::stash_push,
+            easy_git::commands::stash_apply,
+            easy_git::commands::stash_drop,
         ])
         .events(collect_events![easy_git::events::RepoChanged])
         .error_handling(ErrorHandlingMode::Result);

@@ -1,12 +1,13 @@
 import * as ContextMenu from '@radix-ui/react-context-menu';
 import { GitBranch, GitCommitHorizontal, GitGraph, Search, Tag } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { EmptyState } from '../../components/EmptyState';
+import { Dialog, EmptyState } from '../../components';
 import { t } from '../../lib/i18n';
 import { authorInitial, formatRelativeTime } from '../../lib/time';
 import type { CommitLogEntry } from '../../lib/ipc/commands';
 import { useHistoryStore } from '../../stores/historyStore';
 import { useRepoStore } from '../../stores/repoStore';
+import { useRefStore } from '../../stores/refsStore';
 import { useUiStore } from '../../stores/uiStore';
 import { DAG_W, OVERSCAN_ROWS, ROW_H, branchColors, drawGraph } from './graph';
 
@@ -150,6 +151,11 @@ function CommitList() {
     [resolvedTheme],
   );
 
+  // 在此建分支 from the DAG context menu (R-11, live since W7).
+  const [branchAt, setBranchAt] = useState<string | null>(null);
+  const createBranch = useRefStore((s) => s.createBranch);
+  const [branchName, setBranchName] = useState('');
+
   // Virtual window: only rows near the viewport mount in the DOM.
   const first = Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN_ROWS);
   const visibleCount = Math.ceil(viewportHeight / ROW_H) + OVERSCAN_ROWS * 2;
@@ -211,6 +217,56 @@ function CommitList() {
       className="relative min-h-0 flex-1 overflow-y-auto"
       data-testid="history-list"
     >
+      <Dialog
+        open={branchAt !== null}
+        title={t('history.menu.branch')}
+        onClose={() => setBranchAt(null)}
+      >
+        <input
+          value={branchName}
+          onChange={(e) => setBranchName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && branchName.trim()) {
+              void createBranch(branchName.trim(), branchAt).then((ok) => {
+                if (ok) {
+                  setBranchAt(null);
+                  setBranchName('');
+                }
+              });
+            }
+          }}
+          placeholder={t('branch.namePlaceholder')}
+          aria-label={t('branch.namePlaceholder')}
+          data-testid="branch-at-input"
+          autoFocus
+          className="h-8 w-full rounded-md border border-hairline-strong bg-surface-2 px-eg-2 text-secondary text-ink outline-none placeholder:text-ink-tertiary focus:border-primary"
+        />
+        <div className="mt-eg-4 flex justify-end gap-eg-2">
+          <button
+            type="button"
+            onClick={() => setBranchAt(null)}
+            className="h-8 rounded-md border border-hairline bg-surface-1 px-3.5 text-secondary font-medium text-ink hover:bg-surface-2"
+          >
+            {t('dialog.cancel')}
+          </button>
+          <button
+            type="button"
+            data-testid="branch-at-confirm"
+            disabled={!branchName.trim()}
+            onClick={() => {
+              void createBranch(branchName.trim(), branchAt).then((ok) => {
+                if (ok) {
+                  setBranchAt(null);
+                  setBranchName('');
+                }
+              });
+            }}
+            className="h-8 rounded-md bg-primary px-3.5 text-secondary font-medium text-on-primary hover:opacity-90 disabled:pointer-events-none disabled:opacity-40"
+          >
+            {t('branch.create')}
+          </button>
+        </div>
+      </Dialog>
       {/* Scroll-length spacer; sticky canvas + visible DOM rows render inside. */}
       <div style={{ height: entries.length * ROW_H }}>
         <canvas
@@ -233,6 +289,7 @@ function CommitList() {
             index={first + i}
             selected={entry.oid === selectedOid}
             onSelect={() => void selectCommit(entry.oid)}
+            onBranchAt={() => setBranchAt(entry.oid)}
           />
         ))}
       </div>
@@ -272,11 +329,13 @@ function CommitRow({
   index,
   selected,
   onSelect,
+  onBranchAt,
 }: {
   entry: CommitLogEntry;
   index: number;
   selected: boolean;
   onSelect: () => void;
+  onBranchAt: () => void;
 }) {
   return (
     <ContextMenu.Root modal={false}>
@@ -318,18 +377,19 @@ function CommitRow({
           <ContextMenu.Item className={menuItemClass} onSelect={onSelect}>
             {t('history.menu.detail')}
           </ContextMenu.Item>
-          {(['history.menu.branch', 'history.menu.cherryPick', 'history.menu.revert'] as const).map(
-            (key) => (
-              <ContextMenu.Item
-                key={key}
-                disabled
-                className={`${menuItemClass} disabled:opacity-40`}
-                title={t('history.menu.stubHint')}
-              >
-                {t(key)}
-              </ContextMenu.Item>
-            ),
-          )}
+          <ContextMenu.Item className={menuItemClass} onSelect={onBranchAt}>
+            {t('history.menu.branch')}
+          </ContextMenu.Item>
+          {(['history.menu.cherryPick', 'history.menu.revert'] as const).map((key) => (
+            <ContextMenu.Item
+              key={key}
+              disabled
+              className={`${menuItemClass} disabled:opacity-40`}
+              title={t('history.menu.stubHint')}
+            >
+              {t(key)}
+            </ContextMenu.Item>
+          ))}
         </ContextMenu.Content>
       </ContextMenu.Portal>
     </ContextMenu.Root>

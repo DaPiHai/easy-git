@@ -330,3 +330,46 @@ pub struct StageLinesRequest {
     pub source: DiffSourceKind,
     pub hunks: Vec<SelectedHunk>,
 }
+
+/// One local branch for the branch board (m1-plan F-21 / R-15).
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct BranchInfo {
+    /// Short name, e.g. `main`, `feature/dag`.
+    pub name: String,
+    /// The branch HEAD points at (false when HEAD is detached).
+    pub is_current: bool,
+    /// Upstream short name, e.g. `origin/main`; None when unset (W9).
+    pub upstream: Option<String>,
+    pub ahead: u32,
+    pub behind: u32,
+    pub tip_oid: String,
+    pub tip_subject: String,
+    /// Tip commit author time, epoch seconds.
+    pub tip_time: f64,
+}
+
+/// One tag (m1-plan R-17).
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct TagInfo {
+    pub name: String,
+    /// The peeled commit the tag ultimately points at.
+    pub target_oid: String,
+    pub annotated: bool,
+    /// Annotation message for annotated tags.
+    pub message: Option<String>,
+    /// Tag creation time (annotated) or target commit time (lightweight).
+    pub time: f64,
+}
+
+/// One entry of the stash list, newest first (m1-plan R-18).
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct StashEntry {
+    /// Index inside the stash reflog; 0 is the newest.
+    pub index: u32,
+    /// Auto-generated message like `WIP on main: abc1234 subject`.
+    pub message: String,
+    pub oid: String,
+}

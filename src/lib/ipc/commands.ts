@@ -7,6 +7,7 @@ import { open as dialogOpen } from '@tauri-apps/plugin-dialog';
 import {
   commands,
   type AppVersion,
+  type BranchInfo,
   type CommitDetail,
   type CommitLogEntry,
   type CommitOutcome,
@@ -23,12 +24,15 @@ import {
   type StageLinesRequest,
   type StageMode,
   type StatusReport,
+  type StashEntry,
+  type TagInfo,
 } from './bindings';
 import type { EgErrorLike, HumanizedError } from './errors';
 import { humanizeEgError } from './errors';
 
 export type {
   AppVersion,
+  BranchInfo,
   CommitDetail,
   CommitLogEntry,
   CommitOutcome,
@@ -45,6 +49,8 @@ export type {
   StageLinesRequest,
   StageMode,
   StatusReport,
+  StashEntry,
+  TagInfo,
 };
 export type {
   ChangeEntry,
@@ -209,6 +215,102 @@ export async function stageLines(
   request: StageLinesRequest,
 ): Promise<StatusReport> {
   const result = await commands.stageLines(repoId, request);
+  if (result.status === 'error') throw result.error;
+  return result.data;
+}
+
+/** Branch board (m1-plan F-21 / R-15). */
+export async function branchList(repoId: string): Promise<BranchInfo[]> {
+  const result = await commands.branchList(repoId);
+  if (result.status === 'error') throw result.error;
+  return result.data;
+}
+
+export async function branchCreate(
+  repoId: string,
+  name: string,
+  oid: string | null,
+): Promise<BranchInfo> {
+  const result = await commands.branchCreate(repoId, name, oid);
+  if (result.status === 'error') throw result.error;
+  return result.data;
+}
+
+export async function branchRename(
+  repoId: string,
+  oldName: string,
+  newName: string,
+): Promise<void> {
+  const result = await commands.branchRename(repoId, oldName, newName);
+  if (result.status === 'error') throw result.error;
+}
+
+/** Returns the op id for the 撤销 toast (m1-plan R-16). */
+export async function branchDelete(repoId: string, name: string): Promise<string> {
+  const result = await commands.branchDelete(repoId, name);
+  if (result.status === 'error') throw result.error;
+  return result.data;
+}
+
+export async function branchSwitch(repoId: string, name: string): Promise<StatusReport> {
+  const result = await commands.branchSwitch(repoId, name);
+  if (result.status === 'error') throw result.error;
+  return result.data;
+}
+
+/** Tags (m1-plan R-17). */
+export async function tagList(repoId: string): Promise<TagInfo[]> {
+  const result = await commands.tagList(repoId);
+  if (result.status === 'error') throw result.error;
+  return result.data;
+}
+
+export async function tagCreate(
+  repoId: string,
+  name: string,
+  oid: string,
+  message: string | null,
+): Promise<TagInfo> {
+  const result = await commands.tagCreate(repoId, name, oid, message);
+  if (result.status === 'error') throw result.error;
+  return result.data;
+}
+
+export async function tagDelete(repoId: string, name: string): Promise<string> {
+  const result = await commands.tagDelete(repoId, name);
+  if (result.status === 'error') throw result.error;
+  return result.data;
+}
+
+/** Stash (m1-plan R-18 / F-22). */
+export async function stashList(repoId: string): Promise<StashEntry[]> {
+  const result = await commands.stashList(repoId);
+  if (result.status === 'error') throw result.error;
+  return result.data;
+}
+
+export async function stashPush(
+  repoId: string,
+  message: string | null,
+  includeUntracked: boolean,
+): Promise<StatusReport> {
+  const result = await commands.stashPush(repoId, message, includeUntracked);
+  if (result.status === 'error') throw result.error;
+  return result.data;
+}
+
+export async function stashApply(
+  repoId: string,
+  index: number,
+  pop: boolean,
+): Promise<StatusReport> {
+  const result = await commands.stashApply(repoId, index, pop);
+  if (result.status === 'error') throw result.error;
+  return result.data;
+}
+
+export async function stashDrop(repoId: string, index: number): Promise<StashEntry[]> {
+  const result = await commands.stashDrop(repoId, index);
   if (result.status === 'error') throw result.error;
   return result.data;
 }

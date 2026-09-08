@@ -40,6 +40,18 @@ pub fn run() {
             commands::list_branches,
             commands::diff_file,
             commands::stage_lines,
+            commands::branch_list,
+            commands::branch_create,
+            commands::branch_rename,
+            commands::branch_delete,
+            commands::branch_switch,
+            commands::tag_list,
+            commands::tag_create,
+            commands::tag_delete,
+            commands::stash_list,
+            commands::stash_push,
+            commands::stash_apply,
+            commands::stash_drop,
         ])
         .events(collect_events![events::RepoChanged])
         .error_handling(ErrorHandlingMode::Result);

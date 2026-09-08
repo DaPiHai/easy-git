@@ -9,10 +9,11 @@ pub use error::EgError;
 mod dto;
 
 pub use dto::{
-    AppVersion, ChangeEntry, ChangeKind, CommitDetail, CommitFile, CommitLogEntry, CommitOutcome,
-    CommitRefs, CommitRequest, ConfigScope, DiffHunk, DiffLine, DiffLineKind, DiffRequest,
-    DiffResponse, DiffSourceKind, GraphLine, GraphNode, IgnoreMode, LogFilter, LogPage, RepoId,
-    RepoSummary, SelectedHunk, StageLinesRequest, StageMode, StatusReport, WordSpan,
+    AppVersion, BranchInfo, ChangeEntry, ChangeKind, CommitDetail, CommitFile, CommitLogEntry,
+    CommitOutcome, CommitRefs, CommitRequest, ConfigScope, DiffHunk, DiffLine, DiffLineKind,
+    DiffRequest, DiffResponse, DiffSourceKind, GraphLine, GraphNode, IgnoreMode, LogFilter,
+    LogPage, RepoId, RepoSummary, SelectedHunk, StageLinesRequest, StageMode, StashEntry,
+    StatusReport, TagInfo, WordSpan,
 };
 
 #[cfg(test)]

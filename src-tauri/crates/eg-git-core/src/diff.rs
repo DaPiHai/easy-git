@@ -189,7 +189,7 @@ fn parse_hunks(diff: &Diff) -> Result<(Vec<DiffHunk>, bool, u32, u32, bool), EgE
     let mut current: Option<usize> = None;
 
     let print = |_delta: git2::DiffDelta<'_>,
-_hunk: Option<git2::DiffHunk<'_>>,
+                 _hunk: Option<git2::DiffHunk<'_>>,
                  line: git2::DiffLine<'_>|
      -> bool {
         match line.origin() {
@@ -317,7 +317,7 @@ fn rebuild_patch(diff: &Diff, req: &StageLinesRequest) -> Result<String, EgError
     let mut hunks: Vec<(String, Vec<(char, String)>)> = Vec::new();
     let mut current: Option<usize> = None;
     let print = |_delta: git2::DiffDelta<'_>,
-_hunk: Option<git2::DiffHunk<'_>>,
+                 _hunk: Option<git2::DiffHunk<'_>>,
                  line: git2::DiffLine<'_>|
      -> bool {
         match line.origin() {

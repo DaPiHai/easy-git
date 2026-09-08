@@ -333,6 +333,44 @@ STATES = [
         window.__eg.uiStore.getState().setView('history');
       }})()
     """, "31-dark-commit-diff.png"),
+    # ---- W7: branch board / stash + tags hub ----
+    (f"""
+      (() => {{
+        const now = Math.floor(Date.now() / 1000);
+        const b = (name, isCurrent, extra = {{}}) => ({{
+          name, isCurrent, upstream: null, ahead: 0, behind: 0,
+          tipOid: 'abc1234def', tipSubject: 'feat: 界面微调', tipTime: now - 3600,
+          ...extra,
+        }});
+        window.__eg.refsStore.getState().seed({{
+          branches: [
+            b('main', true, {{ tipSubject: 'merge: 合并 feature/dag-render', tipTime: now - 600 }})
+              .name === 'main' ? b('main', true, {{ tipSubject: 'merge: 合并 feature/dag-render', tipTime: now - 600 }}) : null,
+            b('feature/dag-render', false, {{ upstream: 'origin/feature/dag-render', ahead: 2, tipSubject: 'feat: DAG 分支着色', tipTime: now - 7200 }}),
+            b('fix/staging-focus', false, {{ tipSubject: 'fix: 提交框焦点丢失', tipTime: now - 86400 }}),
+          ].filter(Boolean),
+          tags: [],
+          stashes: [],
+        }});
+        window.__eg.uiStore.getState().setView('branches');
+      }})()
+    """, "32-dark-branches.png"),
+    (f"""
+      (() => {{
+        const now = Math.floor(Date.now() / 1000);
+        window.__eg.refsStore.getState().seed({{
+          stashes: [
+            {{ index: 0, message: 'WIP on main: c000abc merge: 合并 feature/dag-render', oid: 'def0123' }},
+            {{ index: 1, message: 'On feature/dag-render: 实验性侧栏', oid: 'aaa9876' }},
+          ],
+          tags: [
+            {{ name: 'v0.9.0', targetOid: 'c003abc1234', annotated: true, message: 'Beta 发布', time: now - 86400 * 3 }},
+            {{ name: 'v0.9.1', targetOid: 'c007abc1234', annotated: false, message: null, time: now - 3600 }},
+          ],
+        }});
+        window.__eg.uiStore.getState().setView('storage');
+      }})()
+    """, "33-dark-storage.png"),
 ]
 
 class Snapper:

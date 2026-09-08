@@ -17,12 +17,17 @@ use git2::{Repository, Signature};
 use serde::{Deserialize, Serialize};
 
 pub const BACKUP_REF_PREFIX: &str = "refs/easy-git/backup";
+/// Holds the original target of a deleted branch/tag until it is restored.
+pub const TRASH_REF_PREFIX: &str = "refs/easy-git/trash";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OpKind {
     Discard,
     Clean,
+    /// Deleted branch/tag; the name rides in `paths[0]` and the original
+    /// target sits under `refs/easy-git/trash/<op_id>` (keeps OpKind Copy).
+    RefDelete,
 }
 
 /// One append-only log line (`<root>/<repo-id>/operations.jsonl`).

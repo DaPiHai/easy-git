@@ -197,7 +197,39 @@ pub fn undo_operation(
             feature: "该操作没有可恢复的快照".into(),
         });
     };
-    eg_safety::restore_snapshot(repo, snapshot_ref, &record.paths)?;
+    // Deleted branches/tags restore from their trash ref; worktree ops
+    // restore from backup snapshots.
+    if record.kind == eg_safety::OpKind::RefDelete {
+        let Some(name) = record.paths.first() else {
+            return Err(EgError::Internal {
+                context: "ref delete record is missing the name".into(),
+            });
+        };
+        let reference = repo
+            .find_reference(snapshot_ref)
+            .map_err(|e| EgError::Internal {
+                context: format!("回收站引用缺失：{e}"),
+            })?;
+        let target = reference.target().ok_or_else(|| EgError::Internal {
+            context: "trash ref has no target".into(),
+        })?;
+        // The trash ref name encodes the kind (branch-<uuid>/tag-<uuid>).
+        let is_tag = snapshot_ref.contains("/tag-");
+        let refname = if is_tag {
+            format!("refs/tags/{name}")
+        } else {
+            format!("refs/heads/{name}")
+        };
+        repo.reference(&refname, target, true, &format!("easy-git restore {name}"))
+            .map_err(|e| EgError::Internal {
+                context: format!("恢复失败（名称可能已被占用）：{e}"),
+            })?;
+        repo.find_reference(snapshot_ref)
+            .and_then(|mut r| r.delete())
+            .ok();
+    } else {
+        eg_safety::restore_snapshot(repo, snapshot_ref, &record.paths)?;
+    }
     safety.record(
         repo_id,
         &eg_safety::OpRecord {

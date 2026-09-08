@@ -63,6 +63,33 @@ export const commands = {
 	diffFile: (repoId: string, request: DiffRequest) => typedError<DiffResponse, EgError>(__TAURI_INVOKE("diff_file", { repoId, request })),
 	/**  Hunk/line-level staging into the index (m1-plan R-13 / F-19). */
 	stageLines: (repoId: string, request: StageLinesRequest) => typedError<StatusReport, EgError>(__TAURI_INVOKE("stage_lines", { repoId, request })),
+	/**  Branch board data (m1-plan F-21 / R-15). */
+	branchList: (repoId: string) => typedError<BranchInfo[], EgError>(__TAURI_INVOKE("branch_list", { repoId })),
+	/**  Creates a branch at HEAD or the given commit (m1-plan R-15). */
+	branchCreate: (repoId: string, name: string, oid: string | null) => typedError<BranchInfo, EgError>(__TAURI_INVOKE("branch_create", { repoId, name, oid })),
+	/**  Renames a branch (m1-plan R-15); renaming the current one moves HEAD. */
+	branchRename: (repoId: string, oldName: string, newName: string) => typedError<null, EgError>(__TAURI_INVOKE("branch_rename", { repoId, oldName, newName })),
+	/**
+	 *  Deletes a branch into the recycle bin (m1-plan R-16); returns the op id
+	 *  for the 撤销 toast.
+	 */
+	branchDelete: (repoId: string, name: string) => typedError<string, EgError>(__TAURI_INVOKE("branch_delete", { repoId, name })),
+	/**  Switches branches (m1-plan R-15); rejects a dirty worktree. */
+	branchSwitch: (repoId: string, name: string) => typedError<StatusReport, EgError>(__TAURI_INVOKE("branch_switch", { repoId, name })),
+	/**  Tag list (m1-plan R-17). */
+	tagList: (repoId: string) => typedError<TagInfo[], EgError>(__TAURI_INVOKE("tag_list", { repoId })),
+	/**  Creates a lightweight or annotated tag (m1-plan R-17). */
+	tagCreate: (repoId: string, name: string, oid: string, message: string | null) => typedError<TagInfo, EgError>(__TAURI_INVOKE("tag_create", { repoId, name, oid, message })),
+	/**  Deletes a tag into the recycle bin (m1-plan R-17); returns the op id. */
+	tagDelete: (repoId: string, name: string) => typedError<string, EgError>(__TAURI_INVOKE("tag_delete", { repoId, name })),
+	/**  Stash list (m1-plan R-18 / F-22). */
+	stashList: (repoId: string) => typedError<StashEntry[], EgError>(__TAURI_INVOKE("stash_list", { repoId })),
+	/**  Stashes worktree + index; untracked files optional (m1-plan R-18). */
+	stashPush: (repoId: string, message: string | null, includeUntracked: boolean) => typedError<StatusReport, EgError>(__TAURI_INVOKE("stash_push", { repoId, message, includeUntracked })),
+	/**  Applies (and with `pop` drops) a stash entry (m1-plan R-18). */
+	stashApply: (repoId: string, index: number, pop: boolean) => typedError<StatusReport, EgError>(__TAURI_INVOKE("stash_apply", { repoId, index, pop })),
+	/**  Drops a stash entry after explicit confirmation (m1-plan R-18). */
+	stashDrop: (repoId: string, index: number) => typedError<StashEntry[], EgError>(__TAURI_INVOKE("stash_drop", { repoId, index })),
 };
 
 /** Events */
@@ -76,6 +103,22 @@ export type AppVersion = {
 	appVersion: string,
 	tauriVersion: string,
 	os: string,
+};
+
+/**  One local branch for the branch board (m1-plan F-21 / R-15). */
+export type BranchInfo = {
+	/**  Short name, e.g. `main`, `feature/dag`. */
+	name: string,
+	/**  The branch HEAD points at (false when HEAD is detached). */
+	isCurrent: boolean,
+	/**  Upstream short name, e.g. `origin/main`; None when unset (W9). */
+	upstream: string | null,
+	ahead: number,
+	behind: number,
+	tipOid: string,
+	tipSubject: string,
+	/**  Tip commit author time, epoch seconds. */
+	tipTime: number | null,
 };
 
 /**  One row of the three-zone changes view (PRD §5.2, m1-plan R-02). */
@@ -339,6 +382,15 @@ export type StageLinesRequest = {
 /**  `stage(repo, paths, mode)` per TDD §4.6 (m1-plan R-05). */
 export type StageMode = "stage" | "unstage";
 
+/**  One entry of the stash list, newest first (m1-plan R-18). */
+export type StashEntry = {
+	/**  Index inside the stash reflog; 0 is the newest. */
+	index: number,
+	/**  Auto-generated message like `WIP on main: abc1234 subject`. */
+	message: string,
+	oid: string,
+};
+
 /**  `status_get` answer: pre-grouped for the three-zone view. */
 export type StatusReport = {
 	repoId: string,
@@ -350,6 +402,18 @@ export type StatusReport = {
 	unstaged: ChangeEntry[],
 	/**  Entries stuck in an unresolved merge state (冲突). */
 	conflicted: ChangeEntry[],
+};
+
+/**  One tag (m1-plan R-17). */
+export type TagInfo = {
+	name: string,
+	/**  The peeled commit the tag ultimately points at. */
+	targetOid: string,
+	annotated: boolean,
+	/**  Annotation message for annotated tags. */
+	message: string | null,
+	/**  Tag creation time (annotated) or target commit time (lightweight). */
+	time: number | null,
 };
 
 /**

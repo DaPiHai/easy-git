@@ -5,9 +5,9 @@ use eg_git_core::worker::{ChangeSink, DiscardOutcome};
 use eg_git_core::RepoManager;
 use eg_safety::Safety;
 use eg_types::{
-    AppVersion, CommitDetail, CommitOutcome, CommitRequest, ConfigScope, DiffRequest, DiffResponse,
-    EgError, IgnoreMode, LogFilter, LogPage, RepoSummary, StageLinesRequest, StageMode,
-    StatusReport,
+    AppVersion, BranchInfo, CommitDetail, CommitOutcome, CommitRequest, ConfigScope, DiffRequest,
+    DiffResponse, EgError, IgnoreMode, LogFilter, LogPage, RepoSummary, StageLinesRequest,
+    StageMode, StashEntry, StatusReport, TagInfo,
 };
 use tauri::{AppHandle, State};
 use tauri_specta::Event;
@@ -259,6 +259,158 @@ pub async fn stage_lines(
 ) -> Result<StatusReport, EgError> {
     let handle = manager.get(&repo_id)?;
     run_blocking(move || handle.stage_lines(request)).await
+}
+
+/// Branch board data (m1-plan F-21 / R-15).
+#[tauri::command]
+#[specta::specta]
+pub async fn branch_list(
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+) -> Result<Vec<BranchInfo>, EgError> {
+    let handle = manager.get(&repo_id)?;
+    run_blocking(move || handle.branch_list()).await
+}
+
+/// Creates a branch at HEAD or the given commit (m1-plan R-15).
+#[tauri::command]
+#[specta::specta]
+pub async fn branch_create(
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+    name: String,
+    oid: Option<String>,
+) -> Result<BranchInfo, EgError> {
+    let handle = manager.get(&repo_id)?;
+    run_blocking(move || handle.branch_create(name, oid)).await
+}
+
+/// Renames a branch (m1-plan R-15); renaming the current one moves HEAD.
+#[tauri::command]
+#[specta::specta]
+pub async fn branch_rename(
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+    old_name: String,
+    new_name: String,
+) -> Result<(), EgError> {
+    let handle = manager.get(&repo_id)?;
+    run_blocking(move || handle.branch_rename(old_name, new_name)).await
+}
+
+/// Deletes a branch into the recycle bin (m1-plan R-16); returns the op id
+/// for the 撤销 toast.
+#[tauri::command]
+#[specta::specta]
+pub async fn branch_delete(
+    manager: State<'_, RepoManager>,
+    safety: State<'_, Safety>,
+    repo_id: String,
+    name: String,
+) -> Result<String, EgError> {
+    let handle = manager.get(&repo_id)?;
+    let safety = std::sync::Arc::new(safety.inner().clone());
+    run_blocking(move || handle.branch_delete(name, safety)).await
+}
+
+/// Switches branches (m1-plan R-15); rejects a dirty worktree.
+#[tauri::command]
+#[specta::specta]
+pub async fn branch_switch(
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+    name: String,
+) -> Result<StatusReport, EgError> {
+    let handle = manager.get(&repo_id)?;
+    run_blocking(move || handle.branch_switch(name)).await
+}
+
+/// Tag list (m1-plan R-17).
+#[tauri::command]
+#[specta::specta]
+pub async fn tag_list(
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+) -> Result<Vec<TagInfo>, EgError> {
+    let handle = manager.get(&repo_id)?;
+    run_blocking(move || handle.tag_list()).await
+}
+
+/// Creates a lightweight or annotated tag (m1-plan R-17).
+#[tauri::command]
+#[specta::specta]
+pub async fn tag_create(
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+    name: String,
+    oid: String,
+    message: Option<String>,
+) -> Result<TagInfo, EgError> {
+    let handle = manager.get(&repo_id)?;
+    run_blocking(move || handle.tag_create(name, oid, message)).await
+}
+
+/// Deletes a tag into the recycle bin (m1-plan R-17); returns the op id.
+#[tauri::command]
+#[specta::specta]
+pub async fn tag_delete(
+    manager: State<'_, RepoManager>,
+    safety: State<'_, Safety>,
+    repo_id: String,
+    name: String,
+) -> Result<String, EgError> {
+    let handle = manager.get(&repo_id)?;
+    let safety = std::sync::Arc::new(safety.inner().clone());
+    run_blocking(move || handle.tag_delete(name, safety)).await
+}
+
+/// Stash list (m1-plan R-18 / F-22).
+#[tauri::command]
+#[specta::specta]
+pub async fn stash_list(
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+) -> Result<Vec<StashEntry>, EgError> {
+    let handle = manager.get(&repo_id)?;
+    run_blocking(move || handle.stash_list()).await
+}
+
+/// Stashes worktree + index; untracked files optional (m1-plan R-18).
+#[tauri::command]
+#[specta::specta]
+pub async fn stash_push(
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+    message: Option<String>,
+    include_untracked: bool,
+) -> Result<StatusReport, EgError> {
+    let handle = manager.get(&repo_id)?;
+    run_blocking(move || handle.stash_push(message, include_untracked)).await
+}
+
+/// Applies (and with `pop` drops) a stash entry (m1-plan R-18).
+#[tauri::command]
+#[specta::specta]
+pub async fn stash_apply(
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+    index: u32,
+    pop: bool,
+) -> Result<StatusReport, EgError> {
+    let handle = manager.get(&repo_id)?;
+    run_blocking(move || handle.stash_apply(index, pop)).await
+}
+
+/// Drops a stash entry after explicit confirmation (m1-plan R-18).
+#[tauri::command]
+#[specta::specta]
+pub async fn stash_drop(
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+    index: u32,
+) -> Result<Vec<StashEntry>, EgError> {
+    let handle = manager.get(&repo_id)?;
+    run_blocking(move || handle.stash_drop(index)).await
 }
 
 async fn run_blocking<T, F>(f: F) -> Result<T, EgError>
