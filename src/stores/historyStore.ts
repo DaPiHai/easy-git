@@ -28,6 +28,8 @@ interface HistoryState {
   selectedOid: string | null;
   detail: CommitDetail | null;
   detailLoading: boolean;
+  /** Commit file currently opened as a read-only diff (F-16 + F-18). */
+  detailFile: string | null;
 
   /** Resets state and loads the first page for the active repo. */
   load: () => Promise<void>;
@@ -37,6 +39,7 @@ interface HistoryState {
   setFilter: (partial: Partial<LogFilter>) => Promise<void>;
   /** Selects a commit and fetches its detail (F-16). */
   selectCommit: (oid: string | null) => Promise<void>;
+  selectDetailFile: (path: string | null) => void;
   seed: (partial: Partial<HistoryState>) => void;
 }
 
@@ -65,6 +68,7 @@ export const useHistoryStore = create<HistoryState>()((set, get) => {
     selectedOid: null,
     detail: null,
     detailLoading: false,
+    detailFile: null,
 
     load: async () => {
       // Browser previews have no IPC; keep whatever the harness seeded.
@@ -78,11 +82,19 @@ export const useHistoryStore = create<HistoryState>()((set, get) => {
           branch: null,
           selectedOid: null,
           detail: null,
+          detailFile: null,
           error: null,
         });
         return;
       }
-      set({ loading: true, entries: [], nextOffset: null, selectedOid: null, detail: null });
+      set({
+        loading: true,
+        entries: [],
+        nextOffset: null,
+        selectedOid: null,
+        detail: null,
+        detailFile: null,
+      });
       try {
         const page = await logPage(repoId, 0, PAGE_SIZE, get().filter);
         set({ entries: page.entries, nextOffset: page.nextOffset, branch: page.branch });
@@ -117,6 +129,8 @@ export const useHistoryStore = create<HistoryState>()((set, get) => {
       set((s) => ({ filter: { ...s.filter, ...partial } }));
       await get().load();
     },
+
+    selectDetailFile: (path) => set({ detailFile: path }),
 
     selectCommit: async (oid) => {
       if (!oid) {

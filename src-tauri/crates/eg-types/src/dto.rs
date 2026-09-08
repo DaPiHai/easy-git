@@ -233,3 +233,100 @@ pub struct CommitDetail {
     pub refs: CommitRefs,
     pub files: Vec<CommitFile>,
 }
+
+/// Which side of the diff a read targets (m1-plan R-12 / F-18).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum DiffSourceKind {
+    /// Worktree vs index (未暂存视图); line staging applies INTO the index.
+    Worktree,
+    /// Index vs HEAD (已暂存视图); line staging rewrites the index back.
+    Index,
+    /// Commit vs first parent (历史详情); read-only.
+    Commit,
+}
+
+/// One file's diff request (m1-plan F-18).
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct DiffRequest {
+    pub path: String,
+    pub old_path: Option<String>,
+    pub source: DiffSourceKind,
+    /// Commit oid when `source` is `commit`.
+    pub commit_oid: Option<String>,
+}
+
+/// Intra-line highlight span: the differing middle of a paired -/+ line
+/// (R-12 词级高亮), measured in UTF-8 bytes from the line content start.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct WordSpan {
+    pub start: u32,
+    pub end: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum DiffLineKind {
+    Context,
+    Added,
+    Deleted,
+}
+
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct DiffLine {
+    pub kind: DiffLineKind,
+    pub old_lineno: Option<u32>,
+    pub new_lineno: Option<u32>,
+    /// Line content WITHOUT the trailing newline.
+    pub content: String,
+    /// Differing byte span for a line that is word-paired with its neighbor.
+    pub word: Option<WordSpan>,
+}
+
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct DiffHunk {
+    /// Original `@@ -a,b +c,d @@ ctx` header text.
+    pub header: String,
+    pub old_start: u32,
+    pub new_start: u32,
+    pub lines: Vec<DiffLine>,
+}
+
+/// One file's unified diff (m1-plan R-12).
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct DiffResponse {
+    pub repo_id: RepoId,
+    pub path: String,
+    pub old_path: Option<String>,
+    pub kind: ChangeKind,
+    pub added: u32,
+    pub deleted: u32,
+    pub is_binary: bool,
+    /// True when the payload was capped (huge files fold in the UI).
+    pub truncated: bool,
+    pub hunks: Vec<DiffHunk>,
+}
+
+/// Line selection inside one hunk (m1-plan R-13): indexes into that hunk's
+/// `lines` array; only added/deleted rows are selectable.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectedHunk {
+    pub hunk_index: u32,
+    pub line_indexes: Vec<u32>,
+}
+
+/// Stages (or unstages, per `source`) the selected hunks/lines by regenerating
+/// a filtered patch and applying it to the index (`git apply --cached`).
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct StageLinesRequest {
+    pub path: String,
+    pub source: DiffSourceKind,
+    pub hunks: Vec<SelectedHunk>,
+}

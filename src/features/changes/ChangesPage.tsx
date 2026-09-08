@@ -395,9 +395,18 @@ function ChangeRow({
           <div
             role="button"
             tabIndex={0}
-            onClick={() => setSelectedChange(selected ? null : entry)}
+            onClick={() =>
+              setSelectedChange(
+                selected ? null : entry,
+                selected ? null : checked ? 'index' : 'worktree',
+              )
+            }
             onKeyDown={(e) => {
-              if (e.key === 'Enter') setSelectedChange(selected ? null : entry);
+              if (e.key === 'Enter')
+                setSelectedChange(
+                  selected ? null : entry,
+                  selected ? null : checked ? 'index' : 'worktree',
+                );
             }}
             aria-selected={selected}
             data-testid="change-row"

@@ -12,12 +12,15 @@ import {
   type CommitOutcome,
   type CommitRequest,
   type ConfigScope,
+  type DiffRequest,
+  type DiffResponse,
   type DiscardOutcome,
   type EgError,
   type IgnoreMode,
   type LogFilter,
   type LogPage,
   type RepoSummary,
+  type StageLinesRequest,
   type StageMode,
   type StatusReport,
 } from './bindings';
@@ -31,16 +34,26 @@ export type {
   CommitOutcome,
   CommitRequest,
   ConfigScope,
+  DiffRequest,
+  DiffResponse,
   DiscardOutcome,
   EgError,
   IgnoreMode,
   LogFilter,
   LogPage,
   RepoSummary,
+  StageLinesRequest,
   StageMode,
   StatusReport,
 };
-export type { ChangeEntry, ChangeKind } from './bindings';
+export type {
+  ChangeEntry,
+  ChangeKind,
+  DiffLine,
+  DiffLineKind,
+  DiffSourceKind,
+  SelectedHunk,
+} from './bindings';
 export type { EgErrorLike, HumanizedError } from './errors';
 
 /** The shape tauri-specta's ErrorHandlingMode::Result produces per command. */
@@ -179,6 +192,23 @@ export async function commitDetail(repoId: string, oid: string): Promise<CommitD
 /** Local branch short names, current first (m1-plan F-17). */
 export async function listBranches(repoId: string): Promise<string[]> {
   const result = await commands.listBranches(repoId);
+  if (result.status === 'error') throw result.error;
+  return result.data;
+}
+
+/** One file's unified diff (m1-plan R-12 / F-18). */
+export async function diffFile(repoId: string, request: DiffRequest): Promise<DiffResponse> {
+  const result = await commands.diffFile(repoId, request);
+  if (result.status === 'error') throw result.error;
+  return result.data;
+}
+
+/** Hunk/line-level staging into the index (m1-plan R-13 / F-19). */
+export async function stageLines(
+  repoId: string,
+  request: StageLinesRequest,
+): Promise<StatusReport> {
+  const result = await commands.stageLines(repoId, request);
   if (result.status === 'error') throw result.error;
   return result.data;
 }

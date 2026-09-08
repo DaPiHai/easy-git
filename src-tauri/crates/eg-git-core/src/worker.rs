@@ -18,7 +18,7 @@ use eg_types::{ConfigScope, EgError, IgnoreMode, RepoId, RepoSummary, StageMode,
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use uuid::Uuid;
 
-use super::{commit, config, log, ops, repo, status};
+use super::{commit, config, diff, log, ops, repo, status};
 
 /// Quiet period before a burst of filesystem events triggers one change event.
 pub const FS_DEBOUNCE: Duration = Duration::from_millis(300);
@@ -85,6 +85,14 @@ enum RepoCommand {
     },
     ListBranches {
         reply: Sender<Result<Vec<String>, EgError>>,
+    },
+    DiffFile {
+        request: eg_types::DiffRequest,
+        reply: Sender<Result<eg_types::DiffResponse, EgError>>,
+    },
+    StageLines {
+        request: eg_types::StageLinesRequest,
+        reply: Sender<Result<StatusReport, EgError>>,
     },
     Close(Sender<()>),
 }
@@ -213,6 +221,20 @@ impl WorkerHandle {
 
     pub fn list_branches(&self) -> Result<Vec<String>, EgError> {
         self.request(|reply| RepoCommand::ListBranches { reply })
+    }
+
+    pub fn diff_file(
+        &self,
+        request: eg_types::DiffRequest,
+    ) -> Result<eg_types::DiffResponse, EgError> {
+        self.request(|reply| RepoCommand::DiffFile { request, reply })
+    }
+
+    pub fn stage_lines(
+        &self,
+        request: eg_types::StageLinesRequest,
+    ) -> Result<StatusReport, EgError> {
+        self.request(|reply| RepoCommand::StageLines { request, reply })
     }
 
     fn request<T>(
@@ -419,6 +441,12 @@ fn run_loop(
             }
             Ok(RepoCommand::ListBranches { reply }) => {
                 let _ = reply.send(log::list_branches(&repo));
+            }
+            Ok(RepoCommand::DiffFile { request, reply }) => {
+                let _ = reply.send(diff::diff_file(&repo, &repo_id, &request));
+            }
+            Ok(RepoCommand::StageLines { request, reply }) => {
+                let _ = reply.send(diff::stage_lines(&repo, &repo_id, &request));
             }
             Ok(RepoCommand::Close(tx)) => {
                 let _ = tx.send(());

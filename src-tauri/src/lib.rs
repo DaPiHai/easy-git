@@ -38,6 +38,8 @@ pub fn run() {
             commands::log_page,
             commands::commit_detail,
             commands::list_branches,
+            commands::diff_file,
+            commands::stage_lines,
         ])
         .events(collect_events![events::RepoChanged])
         .error_handling(ErrorHandlingMode::Result);

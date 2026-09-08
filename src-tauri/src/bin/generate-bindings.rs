@@ -27,6 +27,8 @@ fn main() {
             easy_git::commands::log_page,
             easy_git::commands::commit_detail,
             easy_git::commands::list_branches,
+            easy_git::commands::diff_file,
+            easy_git::commands::stage_lines,
         ])
         .events(collect_events![easy_git::events::RepoChanged])
         .error_handling(ErrorHandlingMode::Result);

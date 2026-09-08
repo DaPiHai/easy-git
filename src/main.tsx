@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import { useHistoryStore } from './stores/historyStore';
 import { useLensStore } from './stores/lensStore';
+import { useDiffStore } from './stores/diffStore';
 import { useRepoStore } from './stores/repoStore';
 import { useUiStore } from './stores/uiStore';
 import { useToastStore } from './stores/toastStore';
@@ -16,6 +17,7 @@ if (import.meta.env.DEV) {
     toastStore: useToastStore,
     lensStore: useLensStore,
     historyStore: useHistoryStore,
+    diffStore: useDiffStore,
   };
 }
 

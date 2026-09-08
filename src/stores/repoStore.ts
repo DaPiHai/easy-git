@@ -18,6 +18,7 @@ import {
   type CommitRequest,
   type CommitOutcome,
   type ConfigScope,
+  type DiffSourceKind,
   type EgErrorLike,
   type HumanizedError,
   type IgnoreMode,
@@ -80,6 +81,7 @@ export interface RepoSeed {
   recents?: RepoMeta[];
   favorites?: string[];
   selectedChange?: ChangeEntry | null;
+  selectedSource?: DiffSourceKind | null;
   error?: HumanizedError | null;
 }
 
@@ -95,6 +97,8 @@ interface RepoState {
   favorites: string[];
   /** File row selected in the changes view; drives the detail panel. */
   selectedChange: ChangeEntry | null;
+  /** Which side the selected row lives on: staged→index, unstaged→worktree. */
+  selectedSource: DiffSourceKind | null;
 
   /** Loads persisted prefs and subscribes to repo://changed. Call once. */
   init: () => void;
@@ -109,7 +113,7 @@ interface RepoState {
   refreshStatus: () => Promise<void>;
   toggleFavorite: (path: string) => void;
   dismissError: () => void;
-  setSelectedChange: (change: ChangeEntry | null) => void;
+  setSelectedChange: (change: ChangeEntry | null, source: DiffSourceKind | null) => void;
   /** fs-watch callback; coalesces bursts before refreshing status. */
   onRepoChanged: (repoId: string) => void;
   /** W3 actions (R-05/R-06/F-10); each applies the returned fresh status. */
@@ -174,6 +178,7 @@ export const useRepoStore = create<RepoState>()((set, get) => {
     status: null,
     statusLoading: false,
     error: null,
+    selectedSource: null,
     recents: loadJson<RepoMeta[]>(RECENTS_KEY, []),
     favorites: loadJson<string[]>(FAVORITES_KEY, []),
     selectedChange: null,
@@ -266,7 +271,7 @@ export const useRepoStore = create<RepoState>()((set, get) => {
     },
 
     dismissError: () => set({ error: null }),
-    setSelectedChange: (change) => set({ selectedChange: change }),
+    setSelectedChange: (change, source) => set({ selectedChange: change, selectedSource: source }),
 
     stagePaths: async (paths, mode) => {
       const { activeId } = get();

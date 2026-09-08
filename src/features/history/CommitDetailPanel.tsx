@@ -1,8 +1,11 @@
+import { ArrowLeft } from 'lucide-react';
 import { t } from '../../lib/i18n';
 import { KIND_META } from '../changes/kind';
 import { authorInitial, formatRelativeTime } from '../../lib/time';
 import { Badge } from '../../components';
 import { useHistoryStore } from '../../stores/historyStore';
+import { useDiffStore } from '../../stores/diffStore';
+import { DiffView } from '../diff/DiffView';
 
 /**
  * Commit detail (m1-plan F-16): metadata, refs and the changed-file list.
@@ -11,6 +14,8 @@ import { useHistoryStore } from '../../stores/historyStore';
 export function CommitDetailPanel() {
   const detail = useHistoryStore((s) => s.detail);
   const detailLoading = useHistoryStore((s) => s.detailLoading);
+  const openFile = useHistoryStore((s) => s.detailFile);
+  const selectDetailFile = useHistoryStore((s) => s.selectDetailFile);
 
   if (detailLoading) {
     return (
@@ -35,6 +40,27 @@ export function CommitDetailPanel() {
 
   const totalAdded = detail.files.reduce((sum, f) => sum + f.added, 0);
   const totalDeleted = detail.files.reduce((sum, f) => sum + f.deleted, 0);
+
+  // Selected commit file → read-only diff with a back link (F-16 + F-18).
+  if (openFile) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col" data-testid="commit-file-diff">
+        <button
+          type="button"
+          data-testid="commit-file-back"
+          onClick={() => {
+            selectDetailFile(null);
+            useDiffStore.getState().close();
+          }}
+          className="mx-eg-3 mt-eg-2 flex h-7 shrink-0 items-center gap-1 self-start rounded-md px-2 text-caption text-ink-muted hover:bg-surface-2 hover:text-ink"
+        >
+          <ArrowLeft className="size-3.5" aria-hidden />
+          {t('diff.back')}
+        </button>
+        <DiffView />
+      </div>
+    );
+  }
 
   return (
     <div
@@ -95,9 +121,16 @@ export function CommitDetailPanel() {
             <li key={`${file.kind}:${file.path}`}>
               <button
                 type="button"
-                onClick={() => undefined}
                 data-testid="commit-file-row"
-                title={t('history.detail.diffPlaceholder')}
+                onClick={() => {
+                  selectDetailFile(file.path);
+                  void useDiffStore.getState().open({
+                    path: file.path,
+                    oldPath: file.oldPath,
+                    source: 'commit',
+                    commitOid: detail.oid,
+                  });
+                }}
                 className="flex h-9 w-full items-center gap-eg-2 px-eg-3 text-left transition-colors duration-80 ease-eg hover:bg-surface-2"
               >
                 <Icon className={`size-4 shrink-0 ${meta.iconClass}`} aria-hidden />

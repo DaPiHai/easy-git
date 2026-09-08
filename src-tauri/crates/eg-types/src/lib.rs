@@ -10,8 +10,9 @@ mod dto;
 
 pub use dto::{
     AppVersion, ChangeEntry, ChangeKind, CommitDetail, CommitFile, CommitLogEntry, CommitOutcome,
-    CommitRefs, CommitRequest, ConfigScope, GraphLine, GraphNode, IgnoreMode, LogFilter, LogPage,
-    RepoId, RepoSummary, StageMode, StatusReport,
+    CommitRefs, CommitRequest, ConfigScope, DiffHunk, DiffLine, DiffLineKind, DiffRequest,
+    DiffResponse, DiffSourceKind, GraphLine, GraphNode, IgnoreMode, LogFilter, LogPage, RepoId,
+    RepoSummary, SelectedHunk, StageLinesRequest, StageMode, StatusReport, WordSpan,
 };
 
 #[cfg(test)]

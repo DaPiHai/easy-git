@@ -275,6 +275,64 @@ STATES = [
         document.querySelector('[data-testid="theme-light"]').click();
       }})()
     """, "28-light-history.png"),
+    # ---- W6: file diff / partial staging ----
+    (f"""
+      (() => {{
+        const diffData = {{
+          repoId: 'r1', path: 'src/features/history/graph.ts', oldPath: null,
+          kind: 'modified', added: 4, deleted: 2, isBinary: false, truncated: false,
+          hunks: [
+            {{
+              header: '@@ -12,7 +12,9 @@ export function laneX',
+              oldStart: 12, newStart: 12,
+              lines: [
+                {{ kind: 'context', oldLineno: 12, newLineno: 12, content: 'export function laneX(lane: number): number {{', word: null }},
+                {{ kind: 'deleted', oldLineno: 13, newLineno: null, content: '  return 12 + lane * LANE_W;', word: {{ start: 9, end: 11 }} }},
+                {{ kind: 'added', oldLineno: null, newLineno: 13, content: '  const base = 9 + LANE_W / 2;', word: null }},
+                {{ kind: 'added', oldLineno: null, newLineno: 14, content: '  return base + lane * LANE_W;', word: null }},
+                {{ kind: 'context', oldLineno: 14, newLineno: 15, content: '}}', word: null }},
+              ],
+            }},
+            {{
+              header: '@@ -31,6 +33,8 @@ export function drawGraph',
+              oldStart: 31, newStart: 33,
+              lines: [
+                {{ kind: 'context', oldLineno: 31, newLineno: 33, content: '  ctx.lineCap = round', word: null }},
+                {{ kind: 'added', oldLineno: null, newLineno: 34, content: '  ctx.strokeStyle = colors[line.color % 8];', word: null }},
+                {{ kind: 'deleted', oldLineno: 32, newLineno: null, content: '  ctx.lineWidth = 1.5;', word: null }},
+                {{ kind: 'added', oldLineno: null, newLineno: 35, content: '  ctx.lineWidth = line.color === 0 ? 2.5 : 1.5;', word: null }},
+              ],
+            }},
+          ],
+        }};
+        window.__eg.diffStore.getState().seed({{
+          request: {{ path: 'src/features/history/graph.ts', oldPath: null, source: 'worktree', commitOid: null }},
+          data: diffData, loading: false, error: null,
+        }});
+        const repo = window.__eg.repoStore.getState();
+        repo.setSelectedChange(
+          {{ path: 'src/features/history/graph.ts', oldPath: null, kind: 'modified' }}, 'worktree');
+        window.__eg.uiStore.getState().setView('changes');
+        document.querySelector('[data-testid="theme-dark"]').click();
+      }})()
+    """, "29-dark-diff-worktree.png"),
+    (f"""
+      (() => {{
+        const ds = window.__eg.diffStore.getState();
+        ds.seed({{
+          request: {{ path: 'src/features/history/graph.ts', oldPath: null, source: 'index', commitOid: null }},
+        }});
+      }})()
+    """, "30-dark-diff-staged.png"),
+    (f"""
+      (() => {{
+        window.__eg.historyStore.getState().seed({{ detailFile: 'src/features/history/graph.ts' }});
+        window.__eg.diffStore.getState().seed({{
+          request: {{ path: 'src/features/history/graph.ts', oldPath: null, source: 'commit', commitOid: 'c000abcdef' }},
+        }});
+        window.__eg.uiStore.getState().setView('history');
+      }})()
+    """, "31-dark-commit-diff.png"),
 ]
 
 class Snapper:

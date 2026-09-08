@@ -1,12 +1,12 @@
 import { PanelRightClose } from 'lucide-react';
-import { useRef } from 'react';
-import { Badge } from '../../components';
+import { useEffect, useRef } from 'react';
 import { t } from '../../lib/i18n';
 import { clampDetailWidth, useUiStore, DETAIL_DEFAULT_WIDTH } from '../../stores/uiStore';
 import { useRepoStore } from '../../stores/repoStore';
+import { useDiffStore } from '../../stores/diffStore';
 import { CommitBox } from '../commit/CommitBox';
 import { CommitDetailPanel } from '../history/CommitDetailPanel';
-import { KIND_META } from '../changes/kind';
+import { DiffView } from '../diff/DiffView';
 
 /**
  * Detail panel (UI doc §5.1): 360px default, draggable 280–480, collapsible.
@@ -85,30 +85,8 @@ function DetailContent() {
 
   if (view === 'history') return <CommitDetailPanel />;
 
-  if (selectedChange) {
-    const meta = KIND_META[selectedChange.kind];
-    const Icon = meta.icon;
-    return (
-      <div
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-eg-4 py-eg-2"
-        data-testid="detail-change"
-      >
-        <div className="flex items-center gap-eg-2">
-          <Icon className={`size-4 ${meta.iconClass}`} aria-hidden />
-          <span className="truncate font-mono text-secondary text-ink">{selectedChange.path}</span>
-        </div>
-        <div className="mt-eg-2 flex items-center gap-eg-2">
-          <Badge variant={meta.badgeVariant}>{t(meta.labelKey)}</Badge>
-        </div>
-        {selectedChange.oldPath ? (
-          <div className="mt-eg-2 font-mono text-caption text-ink-tertiary">
-            {t('changes.detail.oldPath')}: {selectedChange.oldPath}
-          </div>
-        ) : null}
-        <p className="mt-eg-4 text-caption text-ink-tertiary">{t('changes.detail.note')}</p>
-      </div>
-    );
-  }
+  // Selected change row: the file diff with partial staging (F-18/F-19).
+  if (view === 'changes' && selectedChange) return <ChangeDiff />;
 
   // Changes view with nothing selected: the commit box lives here (F-12).
   if (view === 'changes' && hasRepo) return <CommitBox />;
@@ -124,4 +102,22 @@ function DetailContent() {
       </div>
     </div>
   );
+}
+
+/** Fetches the diff for the selected change row and renders it (F-18). */
+function ChangeDiff() {
+  const selectedChange = useRepoStore((s) => s.selectedChange);
+  const selectedSource = useRepoStore((s) => s.selectedSource);
+
+  useEffect(() => {
+    if (!selectedChange) return;
+    void useDiffStore.getState().open({
+      path: selectedChange.path,
+      oldPath: selectedChange.oldPath,
+      source: selectedSource ?? 'worktree',
+      commitOid: null,
+    });
+  }, [selectedChange, selectedSource]);
+
+  return <DiffView interactive />;
 }

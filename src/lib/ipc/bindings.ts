@@ -59,6 +59,10 @@ export const commands = {
 	commitDetail: (repoId: string, oid: string) => typedError<CommitDetail, EgError>(__TAURI_INVOKE("commit_detail", { repoId, oid })),
 	/**  Local branch short names, current first (m1-plan F-17). */
 	listBranches: (repoId: string) => typedError<string[], EgError>(__TAURI_INVOKE("list_branches", { repoId })),
+	/**  One file's unified diff (m1-plan R-12 / F-18). */
+	diffFile: (repoId: string, request: DiffRequest) => typedError<DiffResponse, EgError>(__TAURI_INVOKE("diff_file", { repoId, request })),
+	/**  Hunk/line-level staging into the index (m1-plan R-13 / F-19). */
+	stageLines: (repoId: string, request: StageLinesRequest) => typedError<StatusReport, EgError>(__TAURI_INVOKE("stage_lines", { repoId, request })),
 };
 
 /** Events */
@@ -170,6 +174,58 @@ export type CommitRequest = {
 /**  Which config file a get/set targets (m1-plan R-09). */
 export type ConfigScope = "repo" | "global";
 
+export type DiffHunk = {
+	/**  Original `@@ -a,b +c,d @@ ctx` header text. */
+	header: string,
+	oldStart: number,
+	newStart: number,
+	lines: DiffLine[],
+};
+
+export type DiffLine = {
+	kind: DiffLineKind,
+	oldLineno: number | null,
+	newLineno: number | null,
+	/**  Line content WITHOUT the trailing newline. */
+	content: string,
+	/**  Differing byte span for a line that is word-paired with its neighbor. */
+	word: WordSpan | null,
+};
+
+export type DiffLineKind = "context" | "added" | "deleted";
+
+/**  One file's diff request (m1-plan F-18). */
+export type DiffRequest = {
+	path: string,
+	oldPath: string | null,
+	source: DiffSourceKind,
+	/**  Commit oid when `source` is `commit`. */
+	commitOid: string | null,
+};
+
+/**  One file's unified diff (m1-plan R-12). */
+export type DiffResponse = {
+	repoId: string,
+	path: string,
+	oldPath: string | null,
+	kind: ChangeKind,
+	added: number,
+	deleted: number,
+	isBinary: boolean,
+	/**  True when the payload was capped (huge files fold in the UI). */
+	truncated: boolean,
+	hunks: DiffHunk[],
+};
+
+/**  Which side of the diff a read targets (m1-plan R-12 / F-18). */
+export type DiffSourceKind = 
+/**  Worktree vs index (未暂存视图); line staging applies INTO the index. */
+"worktree" | 
+/**  Index vs HEAD (已暂存视图); line staging rewrites the index back. */
+"index" | 
+/**  Commit vs first parent (历史详情); read-only. */
+"commit";
+
 /**  Discard result: the fresh status plus the op id for the 撤销 toast. */
 export type DiscardOutcome = {
 	opId: string,
@@ -261,6 +317,25 @@ export type RepoSummary = {
 	isEmpty: boolean,
 };
 
+/**
+ *  Line selection inside one hunk (m1-plan R-13): indexes into that hunk's
+ *  `lines` array; only added/deleted rows are selectable.
+ */
+export type SelectedHunk = {
+	hunkIndex: number,
+	lineIndexes: number[],
+};
+
+/**
+ *  Stages (or unstages, per `source`) the selected hunks/lines by regenerating
+ *  a filtered patch and applying it to the index (`git apply --cached`).
+ */
+export type StageLinesRequest = {
+	path: string,
+	source: DiffSourceKind,
+	hunks: SelectedHunk[],
+};
+
 /**  `stage(repo, paths, mode)` per TDD §4.6 (m1-plan R-05). */
 export type StageMode = "stage" | "unstage";
 
@@ -275,6 +350,15 @@ export type StatusReport = {
 	unstaged: ChangeEntry[],
 	/**  Entries stuck in an unresolved merge state (冲突). */
 	conflicted: ChangeEntry[],
+};
+
+/**
+ *  Intra-line highlight span: the differing middle of a paired -/+ line
+ *  (R-12 词级高亮), measured in UTF-8 bytes from the line content start.
+ */
+export type WordSpan = {
+	start: number,
+	end: number,
 };
 
 /* Tauri Specta runtime */

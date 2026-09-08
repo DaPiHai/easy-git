@@ -5,8 +5,9 @@ use eg_git_core::worker::{ChangeSink, DiscardOutcome};
 use eg_git_core::RepoManager;
 use eg_safety::Safety;
 use eg_types::{
-    AppVersion, CommitDetail, CommitOutcome, CommitRequest, ConfigScope, EgError, IgnoreMode,
-    LogFilter, LogPage, RepoSummary, StageMode, StatusReport,
+    AppVersion, CommitDetail, CommitOutcome, CommitRequest, ConfigScope, DiffRequest, DiffResponse,
+    EgError, IgnoreMode, LogFilter, LogPage, RepoSummary, StageLinesRequest, StageMode,
+    StatusReport,
 };
 use tauri::{AppHandle, State};
 use tauri_specta::Event;
@@ -234,6 +235,30 @@ pub async fn list_branches(
 ) -> Result<Vec<String>, EgError> {
     let handle = manager.get(&repo_id)?;
     run_blocking(move || handle.list_branches()).await
+}
+
+/// One file's unified diff (m1-plan R-12 / F-18).
+#[tauri::command]
+#[specta::specta]
+pub async fn diff_file(
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+    request: DiffRequest,
+) -> Result<DiffResponse, EgError> {
+    let handle = manager.get(&repo_id)?;
+    run_blocking(move || handle.diff_file(request)).await
+}
+
+/// Hunk/line-level staging into the index (m1-plan R-13 / F-19).
+#[tauri::command]
+#[specta::specta]
+pub async fn stage_lines(
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+    request: StageLinesRequest,
+) -> Result<StatusReport, EgError> {
+    let handle = manager.get(&repo_id)?;
+    run_blocking(move || handle.stage_lines(request)).await
 }
 
 async fn run_blocking<T, F>(f: F) -> Result<T, EgError>

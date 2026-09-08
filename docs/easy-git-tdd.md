@@ -274,3 +274,17 @@ IPC 序列化为 `{code, params, message_zh, hint?}`；前端 `lib/ipc/errors.ts
 | 7 | 原生控件主题 | 暗色下 `<select>` 白底黑字（原生控件不吃 CSS 变量）——tokens.css 补 `color-scheme: dark/light` 按 data-theme 声明，judge 验收通过。 |
 | 8 | 右键桩 R-11 | 提交行右键菜单：查看变更详情（可用）+ 在此建分支/摘取/回滚（disabled，W7/W8 开放）；不接后端。 |
 | 9 | 测试 | Rust +8（lane 几何 diamond、refs 装饰、分页连续性、三过滤、详情文件计数、空仓库、list_branches + perf）；前端 +18（graph 几何 3、historyStore 6、HistoryPage 6、time 3）。快照 26-28 judge 通过（修复：暗色原生 select、菱形节点、color-scheme）。 |
+
+### 2026-09-08 · W6 Diff 与逐块暂存偏差记录
+
+| # | 条目 | 说明 |
+| --- | --- | --- |
+| 1 | libgit2 workdir diff 缺陷 | 本环境的 libgit2 `diff_tree_to_workdir_with_index(None)` 并不按文档「用 index 做旧侧」，实测整个文件回成 Added（旧侧等同空树）。修法：Worktree 源显式 `index.write_tree()` 生成 index 树对象再 `diff_tree_to_workdir(Some(&tree))`，语义与 `git diff` 一致。后续升级 libgit2 需回归 w6 测试。 |
+| 2 | print 回调契约 | `diff.print` 回调返回 `false` 在 git2 里是「用户中止」→ 报错 -7（User），不能当优雅退出用。截断改「跳过不入列」；file_header 捕获首块后继续走完。二进制文件靠 origin `'B'` 行检测（delta.flags 的 BINARY 标志对 workdir diff 不总置位）。 |
+| 3 | 未跟踪文件 diff | 需 `DiffOptions::show_untracked_content(true)`，否则未跟踪条目只有文件头没有 hunk 内容。 |
+| 4 | R-13 行级暂存 | 过滤补丁在 Rust 重建：整 hunk 选择→原文直出；部分选择→保留上下文+选中 ± 行、按首行行号重算 `@@ -a,b +c,d @@`。应用走 git CLI `git apply --cached --unidiff-zero --recount -`（stdin），等价 `git add -p`。unstage=把 HEAD→index 的 diff **反转**（+↔- 互换、header 起止互换）后同样应用——index 是补丁旧侧。未跟踪文件仅支持整块选择（部分选择无法构造 preimage）。 |
+| 5 | 快照点边界 | 行级暂存只改 index（可随时反操作），不属破坏性操作，不走 eg-safety 快照（与整文件 stage/unstage 同口径）。 |
+| 6 | 词级高亮 | 仅配对「单行删除+单行新增」计算公共前/后缀（字节级，UTF-8 安全），span 存于两侧行；多行块不配对。前端按增/删行分别用 diff-word-added/deleted-bg 高亮中间段。 |
+| 7 | 前端结构 | diffStore 单槽（request+data），open 对 `isTauriAvailable()==false` 早退且不清空（快照 harness 可 seed，本次 judge 首轮 fail 根因即此）；选中行携带来源（staged→index / unstaged→worktree）进入详情面板；提交详情文件点击→只读 commit 源 diff + 返回按钮，detailFile 提升到 historyStore 供 harness 驱动。 |
+| 8 | 性能 | 后端每文件行数上限 5000（truncated 标记）；前端 >600 行折叠显示前 300 行（展开全部），折叠期间未挂载的行不进 DOM；diff 行代码不折行（横向滚动），退出标准「5000 行不卡」由折叠+截断双保险达成。 |
+| 9 | 测试 | Rust +6（三源 diff、词级 span、二进制/截断、整 hunk 暂存往返、部分行暂存 index 内容断言、双 hunk 选择性暂存、unstage 还原）；前端 +10（diffStore 4、DiffView 6）。快照 29-31 judge 通过。 |
