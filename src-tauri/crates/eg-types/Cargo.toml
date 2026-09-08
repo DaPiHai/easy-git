@@ -1,0 +1,15 @@
+[package]
+name = "eg-types"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "EasyGit shared types; serde shapes double as the IPC DTO layer"
+
+[dependencies]
+serde.workspace = true
+specta.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

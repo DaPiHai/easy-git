@@ -1,0 +1,11 @@
+[package]
+name = "eg-safety"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "EasyGit safety engine: snapshot points, trash refs, undo/redo (TDD §4.3)"
+
+[dependencies]
+serde.workspace = true
+specta.workspace = true

@@ -1,0 +1,11 @@
+[package]
+name = "eg-indexer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "EasyGit large-repo acceleration: commit-graph, topo lane cache (TDD §4.5)"
+
+[dependencies]
+serde.workspace = true
+specta.workspace = true

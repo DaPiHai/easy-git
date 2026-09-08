@@ -1,0 +1,10 @@
+[package]
+name = "eg-providers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "EasyGit platform adapters: GitHub / GitLab / Gitee (M2, TDD §4.4)"
+
+[dependencies]
+serde.workspace = true

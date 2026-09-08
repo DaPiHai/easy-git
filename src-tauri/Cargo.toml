@@ -1,0 +1,53 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/eg-types",
+    "crates/eg-git-core",
+    "crates/eg-safety",
+    "crates/eg-providers",
+    "crates/eg-indexer",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+rust-version = "1.85"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+specta = "=2.0.0-rc.25"
+thiserror = "2"
+tempfile = "3"
+
+[package]
+name = "easy-git"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "EasyGit — a beginner-friendly visual Git desktop app"
+default-run = "easy-git"
+
+[lib]
+name = "easy_git"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+eg-types = { path = "crates/eg-types" }
+tauri = { version = "2", features = [] }
+serde.workspace = true
+serde_json.workspace = true
+specta.workspace = true
+tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
+specta-typescript = "0.0.12"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+# `cargo test` never launches the GUI; tauri::test keeps the lib testable later.
+tauri = { version = "2", features = ["test"] }

@@ -1,0 +1,164 @@
+/*
+ * EasyGit design tokens (docs/easy-git-ui-design.md §3–§5).
+ * Dark theme is the baseline (:root); light theme mirrors it under
+ * [data-theme='light']. Component code must only reference --eg-* tokens —
+ * hard-coded colors are forbidden (AGENTS.md).
+ */
+
+:root {
+  /* §3.1 dark theme (default baseline) */
+  --eg-canvas: #010102;
+  --eg-surface-1: #0f1011;
+  --eg-surface-2: #141516;
+  --eg-surface-3: #18191a;
+  --eg-surface-4: #191a1b;
+  --eg-hairline: #23252a;
+  --eg-hairline-strong: #34343a;
+  --eg-hairline-tertiary: #3e3e44;
+  --eg-ink: #f7f8f8;
+  --eg-ink-muted: #d0d6e0;
+  --eg-ink-subtle: #8a8f98;
+  --eg-ink-tertiary: #62666d;
+  --eg-primary: #5e6ad2;
+  --eg-primary-hover: #828fff;
+  --eg-primary-focus: #5e69d1;
+  --eg-on-primary: #ffffff;
+  --eg-success: #27a644;
+  --eg-overlay: rgba(0, 0, 0, 0.6);
+  /* §6.1 inverse CTA: white surface on dark theme */
+  --eg-inverse-bg: #ffffff;
+  --eg-on-inverse: #18191b;
+
+  /* §3.3 git semantic colors (dark values) */
+  --eg-git-added: #27a644;
+  --eg-git-modified: #e2b341;
+  --eg-git-deleted: #e5484d;
+  --eg-git-renamed: #4f8fd9;
+  --eg-git-conflict: #f2994a;
+  --eg-git-untracked: #8a8f98;
+  --eg-git-danger: #e5484d;
+
+  /* §3.4 branch / DAG palette (identical in both themes) */
+  --eg-branch-1: #5e6ad2;
+  --eg-branch-2: #4fa3e8;
+  --eg-branch-3: #38b8a4;
+  --eg-branch-4: #4c9e4d;
+  --eg-branch-5: #e2b341;
+  --eg-branch-6: #f2994a;
+  --eg-branch-7: #b06bd6;
+  --eg-branch-8: #e5647e;
+
+  /* §5.3 the only soft shadow allowed (dialogs, dark theme) */
+  --eg-shadow-dialog: 0 8px 32px rgba(0, 0, 0, 0.45);
+}
+
+:root[data-theme='light'] {
+  /* §3.2 light theme, derived from the upstream inverse tokens */
+  --eg-canvas: #ffffff;
+  --eg-surface-1: #f5f6f6;
+  --eg-surface-2: #ecedef;
+  --eg-surface-3: #e3e5e7;
+  --eg-surface-4: #dbdee0;
+  --eg-hairline: #e4e6e9;
+  --eg-hairline-strong: #c9ccd2;
+  --eg-hairline-tertiary: #b0b4bb;
+  --eg-ink: #18191b;
+  --eg-ink-muted: #3e4149;
+  --eg-ink-subtle: #6f737b;
+  --eg-ink-tertiary: #9a9ea6;
+  --eg-primary: #5e6ad2;
+  --eg-primary-hover: #4f5ac0;
+  --eg-primary-focus: #5e69d1;
+  --eg-on-primary: #ffffff;
+  --eg-success: #1e7d38;
+  --eg-overlay: rgba(0, 0, 0, 0.6);
+  /* §6.1 inverse CTA: dark surface on light theme */
+  --eg-inverse-bg: #18191b;
+  --eg-on-inverse: #ffffff;
+
+  /* §3.3 git semantic colors (light values) */
+  --eg-git-added: #1e7d38;
+  --eg-git-modified: #9a7a1a;
+  --eg-git-deleted: #c73338;
+  --eg-git-renamed: #2f6cb3;
+  --eg-git-conflict: #c26a1d;
+  --eg-git-untracked: #6f737b;
+  --eg-git-danger: #c73338;
+}
+
+:root {
+  /* §4.1 font stacks (Inter + system CJK; JetBrains Mono for code surfaces) */
+  --eg-font-ui:
+    'Inter Variable', 'Inter', -apple-system, 'SF Pro Text', 'PingFang SC', 'HarmonyOS Sans SC',
+    'Microsoft YaHei UI', 'Microsoft YaHei', 'Noto Sans SC', 'Segoe UI', sans-serif;
+  --eg-font-mono:
+    'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas,
+    'PingFang SC', 'Microsoft YaHei', monospace;
+
+  /* §4.2 type scale (size / line-height per role) */
+  --eg-text-title-size: 16px;
+  --eg-text-title-lh: 1.4;
+  --eg-text-section-size: 14px;
+  --eg-text-section-lh: 1.45;
+  --eg-text-body-size: 14px;
+  --eg-text-body-lh: 1.6;
+  --eg-text-secondary-size: 13px;
+  --eg-text-secondary-lh: 1.5;
+  --eg-text-caption-size: 12px;
+  --eg-text-caption-lh: 1.4;
+  --eg-text-micro-size: 11px;
+  --eg-text-micro-lh: 1.3;
+  --eg-text-mono-size: 13px;
+  --eg-text-mono-lh: 1.6;
+
+  /* §5.2 spacing scale (upstream values kept) */
+  --eg-space-1: 4px;
+  --eg-space-2: 8px;
+  --eg-space-3: 12px;
+  --eg-space-4: 16px;
+  --eg-space-5: 24px;
+  --eg-space-6: 32px;
+  --eg-space-7: 48px;
+  --eg-space-8: 64px;
+  --eg-space-section: 96px;
+
+  /* §5.2 radii: 8px controls, 12px cards/dialogs, pill badges */
+  --eg-radius-md: 8px;
+  --eg-radius-lg: 12px;
+  --eg-radius-pill: 9999px;
+
+  /* §5.1 layout dimensions */
+  --eg-topbar-h: 44px;
+  --eg-bottombar-h: 28px;
+  --eg-sidebar-w: 232px;
+  --eg-sidebar-rail-w: 48px;
+  --eg-detail-w: 360px;
+  --eg-detail-min-w: 280px;
+  --eg-detail-max-w: 480px;
+  --eg-row-h: 32px;
+  --eg-row-h-compact: 26px;
+
+  /* §8 motion */
+  --eg-dur-hover: 80ms;
+  --eg-dur: 120ms;
+  --eg-dur-overlay: 160ms;
+  --eg-ease-out: cubic-bezier(0, 0, 0.2, 1);
+}
+
+:root {
+  /* Derived alpha surfaces (§3.3: small-area usage only; §6.1/§6.6 percentages). */
+  --eg-diff-added-bg: color-mix(in srgb, var(--eg-git-added) 11%, transparent);
+  --eg-diff-deleted-bg: color-mix(in srgb, var(--eg-git-deleted) 11%, transparent);
+  --eg-diff-word-added-bg: color-mix(in srgb, var(--eg-git-added) 22%, transparent);
+  --eg-diff-word-deleted-bg: color-mix(in srgb, var(--eg-git-deleted) 22%, transparent);
+  --eg-git-added-bg: color-mix(in srgb, var(--eg-git-added) 10%, transparent);
+  --eg-git-modified-bg: color-mix(in srgb, var(--eg-git-modified) 10%, transparent);
+  --eg-git-deleted-bg: color-mix(in srgb, var(--eg-git-deleted) 10%, transparent);
+  --eg-git-renamed-bg: color-mix(in srgb, var(--eg-git-renamed) 10%, transparent);
+  --eg-git-conflict-bg: color-mix(in srgb, var(--eg-git-conflict) 12%, transparent);
+  --eg-git-danger-bg: color-mix(in srgb, var(--eg-git-danger) 10%, transparent);
+  --eg-git-danger-border: color-mix(in srgb, var(--eg-git-danger) 40%, transparent);
+
+  /* §5.3 focus ring: 2px primary at 50% opacity */
+  --eg-focus-ring-color: color-mix(in srgb, var(--eg-primary-focus) 50%, transparent);
+}

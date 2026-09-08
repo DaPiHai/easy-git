@@ -1,0 +1,155 @@
+/* Fonts are packaged with the app (UI doc §4.1); CJK text falls through to the system stack. */
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/jetbrains-mono';
+
+@import 'tailwindcss';
+@import './tokens.css';
+
+/*
+ * Tailwind v4 theme mapping: utilities always reference the runtime --eg-* tokens
+ * (inline), so switching data-theme on :root repaints the whole app with no
+ * hard-coded colors in components.
+ */
+@theme inline {
+  --color-canvas: var(--eg-canvas);
+  --color-surface-1: var(--eg-surface-1);
+  --color-surface-2: var(--eg-surface-2);
+  --color-surface-3: var(--eg-surface-3);
+  --color-surface-4: var(--eg-surface-4);
+  --color-hairline: var(--eg-hairline);
+  --color-hairline-strong: var(--eg-hairline-strong);
+  --color-hairline-tertiary: var(--eg-hairline-tertiary);
+  --color-ink: var(--eg-ink);
+  --color-ink-muted: var(--eg-ink-muted);
+  --color-ink-subtle: var(--eg-ink-subtle);
+  --color-ink-tertiary: var(--eg-ink-tertiary);
+  --color-primary: var(--eg-primary);
+  --color-primary-hover: var(--eg-primary-hover);
+  --color-primary-focus: var(--eg-primary-focus);
+  --color-on-primary: var(--eg-on-primary);
+  --color-success: var(--eg-success);
+  --color-inverse-bg: var(--eg-inverse-bg);
+  --color-on-inverse: var(--eg-on-inverse);
+
+  --color-git-added: var(--eg-git-added);
+  --color-git-modified: var(--eg-git-modified);
+  --color-git-deleted: var(--eg-git-deleted);
+  --color-git-renamed: var(--eg-git-renamed);
+  --color-git-conflict: var(--eg-git-conflict);
+  --color-git-untracked: var(--eg-git-untracked);
+  --color-danger: var(--eg-git-danger);
+
+  --color-diff-added-bg: var(--eg-diff-added-bg);
+  --color-diff-deleted-bg: var(--eg-diff-deleted-bg);
+  --color-diff-word-added-bg: var(--eg-diff-word-added-bg);
+  --color-diff-word-deleted-bg: var(--eg-diff-word-deleted-bg);
+  --color-git-added-bg: var(--eg-git-added-bg);
+  --color-git-modified-bg: var(--eg-git-modified-bg);
+  --color-git-deleted-bg: var(--eg-git-deleted-bg);
+  --color-git-renamed-bg: var(--eg-git-renamed-bg);
+  --color-git-conflict-bg: var(--eg-git-conflict-bg);
+  --color-danger-bg: var(--eg-git-danger-bg);
+  --color-danger-border: var(--eg-git-danger-border);
+
+  --color-branch-1: var(--eg-branch-1);
+  --color-branch-2: var(--eg-branch-2);
+  --color-branch-3: var(--eg-branch-3);
+  --color-branch-4: var(--eg-branch-4);
+  --color-branch-5: var(--eg-branch-5);
+  --color-branch-6: var(--eg-branch-6);
+  --color-branch-7: var(--eg-branch-7);
+  --color-branch-8: var(--eg-branch-8);
+
+  --font-ui: var(--eg-font-ui);
+  --font-mono: var(--eg-font-mono);
+
+  --text-title: var(--eg-text-title-size);
+  --text-title--line-height: var(--eg-text-title-lh);
+  --text-section: var(--eg-text-section-size);
+  --text-section--line-height: var(--eg-text-section-lh);
+  --text-body: var(--eg-text-body-size);
+  --text-body--line-height: var(--eg-text-body-lh);
+  --text-secondary: var(--eg-text-secondary-size);
+  --text-secondary--line-height: var(--eg-text-secondary-lh);
+  --text-caption: var(--eg-text-caption-size);
+  --text-caption--line-height: var(--eg-text-caption-lh);
+  --text-micro: var(--eg-text-micro-size);
+  --text-micro--line-height: var(--eg-text-micro-lh);
+  --text-mono: var(--eg-text-mono-size);
+  --text-mono--line-height: var(--eg-text-mono-lh);
+
+  --spacing-eg-1: var(--eg-space-1);
+  --spacing-eg-2: var(--eg-space-2);
+  --spacing-eg-3: var(--eg-space-3);
+  --spacing-eg-4: var(--eg-space-4);
+  --spacing-eg-5: var(--eg-space-5);
+  --spacing-eg-6: var(--eg-space-6);
+  --spacing-eg-7: var(--eg-space-7);
+  --spacing-eg-8: var(--eg-space-8);
+
+  --radius-md: var(--eg-radius-md);
+  --radius-lg: var(--eg-radius-lg);
+  --radius-pill: var(--eg-radius-pill);
+
+  --ease-eg: var(--eg-ease-out);
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--eg-canvas);
+    color: var(--eg-ink);
+    font-family: var(--eg-font-ui);
+    font-size: var(--eg-text-body-size);
+    line-height: var(--eg-text-body-lh);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    /* UI doc §4.3: negative letter-spacing must never apply to CJK text. */
+    letter-spacing: 0;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--eg-focus-ring-color);
+    outline-offset: 0;
+  }
+
+  ::selection {
+    background-color: var(--eg-primary);
+    color: var(--eg-on-primary);
+  }
+
+  /* Quiet, hairline-consistent scrollbars */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--eg-hairline-strong);
+    border-radius: var(--eg-radius-pill);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--eg-hairline-tertiary);
+  }
+
+  /* UI doc §8: honor the OS reduced-motion setting. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
