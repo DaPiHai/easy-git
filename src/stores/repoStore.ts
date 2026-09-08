@@ -1,15 +1,22 @@
 import { create } from 'zustand';
 import {
+  cleanExecute,
   closeRepo,
+  discardChanges,
   formatIpcError,
   getStatus,
+  ignorePaths as ignorePathsIpc,
   initRepo,
   isTauriAvailable,
   openRepo as openRepoIpc,
   pickDirectory,
+  stagePaths as stagePathsIpc,
+  undoOperation as undoOperationIpc,
   type EgErrorLike,
   type HumanizedError,
+  type IgnoreMode,
   type RepoSummary,
+  type StageMode,
   type StatusReport,
 } from '../lib/ipc/commands';
 import type { RepoChanged } from '../lib/ipc/bindings';
@@ -88,6 +95,16 @@ interface RepoState {
   setSelectedChange: (change: ChangeEntry | null) => void;
   /** fs-watch callback; coalesces bursts before refreshing status. */
   onRepoChanged: (repoId: string) => void;
+  /** W3 actions (R-05/R-06/F-10); each applies the returned fresh status. */
+  stagePaths: (paths: string[], mode: StageMode) => Promise<void>;
+  /** Returns the op id for the 撤销 toast, or null when nothing was discarded. */
+  discardPaths: (paths: string[]) => Promise<string | null>;
+  /** Returns the op id for the 撤销 toast, or null on failure. */
+  cleanUntracked: (paths: string[]) => Promise<string | null>;
+  /** Lists untracked entries for the clean confirmation dialog. */
+  previewClean: () => Promise<string[]>;
+  ignorePaths: (paths: string[], mode: IgnoreMode) => Promise<void>;
+  undoOperation: (opId: string) => Promise<void>;
   /** Test seam: seed state directly (tests / snapshot harness). */
   seed: (partial: RepoSeed) => void;
 }
@@ -217,6 +234,76 @@ export const useRepoStore = create<RepoState>()((set, get) => {
 
     dismissError: () => set({ error: null }),
     setSelectedChange: (change) => set({ selectedChange: change }),
+
+    stagePaths: async (paths, mode) => {
+      const { activeId } = get();
+      if (!activeId) return;
+      try {
+        const status = await stagePathsIpc(activeId, paths, mode);
+        set({ status });
+      } catch (error) {
+        set({ error: humanize(error) });
+      }
+    },
+
+    discardPaths: async (paths) => {
+      const { activeId } = get();
+      if (!activeId) return null;
+      try {
+        const outcome = await discardChanges(activeId, paths);
+        set({ status: outcome.status });
+        return outcome.opId;
+      } catch (error) {
+        set({ error: humanize(error) });
+        return null;
+      }
+    },
+
+    cleanUntracked: async (paths) => {
+      const { activeId } = get();
+      if (!activeId) return null;
+      try {
+        const outcome = await cleanExecute(activeId, paths);
+        set({ status: outcome.status });
+        return outcome.opId;
+      } catch (error) {
+        set({ error: humanize(error) });
+        return null;
+      }
+    },
+
+    previewClean: async () => {
+      const { activeId } = get();
+      if (!activeId) return [];
+      try {
+        return await import('../lib/ipc/commands').then((m) => m.cleanPreview(activeId));
+      } catch (error) {
+        set({ error: humanize(error) });
+        return [];
+      }
+    },
+
+    ignorePaths: async (paths, mode) => {
+      const { activeId } = get();
+      if (!activeId) return;
+      try {
+        const status = await ignorePathsIpc(activeId, paths, mode);
+        set({ status });
+      } catch (error) {
+        set({ error: humanize(error) });
+      }
+    },
+
+    undoOperation: async (opId) => {
+      const { activeId } = get();
+      if (!activeId) return;
+      try {
+        const status = await undoOperationIpc(activeId, opId);
+        set({ status });
+      } catch (error) {
+        set({ error: humanize(error) });
+      }
+    },
 
     onRepoChanged: (repoId) => {
       if (repoId !== get().activeId) return;

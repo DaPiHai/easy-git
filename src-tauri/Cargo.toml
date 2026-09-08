@@ -38,6 +38,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+eg-safety = { path = "crates/eg-safety" }
 eg-types = { path = "crates/eg-types" }
 eg-git-core = { path = "crates/eg-git-core" }
 tauri = { version = "2", features = [] }

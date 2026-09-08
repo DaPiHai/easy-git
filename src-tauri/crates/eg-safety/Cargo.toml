@@ -7,5 +7,10 @@ rust-version.workspace = true
 description = "EasyGit safety engine: snapshot points, trash refs, undo/redo (TDD §4.3)"
 
 [dependencies]
+eg-types = { path = "../eg-types" }
+git2 = { version = "0.21", default-features = false }
 serde.workspace = true
-specta.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

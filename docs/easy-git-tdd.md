@@ -235,3 +235,14 @@ IPC 序列化为 `{code, params, message_zh, hint?}`；前端 `lib/ipc/errors.ts
 | 5 | repo_init 语义 | `repo_init` 对已是仓库的目录幂等（等价 open），新建用 libgit2 init；clone（R-04 P1）与底栏任务进度（F-07 P1）顺延到下次会话。 |
 | 6 | 生成器同步约束 | `generate-bindings` bin 的命令/事件注册表必须与 `run()` 保持一致（W2 首跑踩坑：漏注册导致绑定缺失），后续考虑提取共享注册函数。 |
 | 7 | 真实 status 语义 | status 分组：staged=index-vs-HEAD，unstaged=worktree-vs-index（含未跟踪），conflicted=合并冲突；未跟踪整目录折叠为 `dir/`（与 git status 一致）；重命名检测 `renames_head_to_index`，条目 path 取 delta.new_file。全部有断言测试（9 例）+ mid-size 打开+status < 1.5s 实测（#[ignore] 性能测试）。 |
+
+### 2026-09-08 · W3 变更与暂存闭环偏差记录
+
+| # | 条目 | 说明 |
+| --- | --- | --- |
+| 1 | eg-safety v0 | 快照点实现为「备份树」：受影响路径的当前内容（worktree，staged 删除回退 index 内容）写入无父提交，挂在 `refs/easy-git/backup/<op_id>`；操作日志 `<root>/safety/<repo-id>/operations.jsonl` append-only，同 op_id 以最后一条为准（撤销=追加 undone 记录）。快照失败会中止整个 discard（红线）。撤销=按备份树 checkout 还原；路径不在备份树中时跳过（checkout pathspec 落空会误删文件，实测踩坑）。 |
+| 2 | unstage 实现 | `git reset HEAD -- paths` 用 `repo.reset_default(Some(&head_obj), paths)`；注意 git2 0.21 的 `reset_default(None)` 并非「默认 HEAD」而是清空匹配条目（实测踩坑，必须显式传 HEAD 对象）；unborn HEAD 退化为逐路径 `index.remove_path`。 |
+| 3 | discard 语义 | 统一流程=快照 → unstage(索引回到 HEAD) → 未跟踪删除 / 已跟踪从索引强检出到工作区；staged 删除被丢弃=取消删除（文件恢复 HEAD 内容，无数据丢失，快照自然为空）。 |
+| 4 | 勾选即暂存 | 行复选框=立即暂存/取消暂存（GitHub Desktop 心智），区头复选框=整区批量；提交勾选集（W4 提交框消费）W4 再引入，避免双状态混用。 |
+| 5 | clean | 仅允许未跟踪条目（其它路径拒绝并返回 UnsafeOperation），确认对话框列出将删除项，走同一快照+撤销通道。 |
+| 6 | 测试 | W3 新增 8 项集成测试，含「执行→撤销→内容等价」往返（修改/staged删除/未跟踪目录 三形态）与 double-undo 拒绝。 |

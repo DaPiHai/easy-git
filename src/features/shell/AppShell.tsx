@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useUiStore } from '../../stores/uiStore';
 import { useRepoStore } from '../../stores/repoStore';
+import { ToastHost } from '../../components';
 import { BottomBar } from './BottomBar';
 import { DetailPanel } from './DetailPanel';
 import { RepoSidebar } from './RepoSidebar';
@@ -63,6 +64,7 @@ export function AppShell() {
       </div>
       <BottomBar />
       <QuickSwitcher />
+      <ToastHost />
     </div>
   );
 }

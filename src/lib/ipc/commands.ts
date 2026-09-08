@@ -7,14 +7,25 @@ import { open as dialogOpen } from '@tauri-apps/plugin-dialog';
 import {
   commands,
   type AppVersion,
+  type DiscardOutcome,
   type EgError,
+  type IgnoreMode,
   type RepoSummary,
+  type StageMode,
   type StatusReport,
 } from './bindings';
 import type { EgErrorLike, HumanizedError } from './errors';
 import { humanizeEgError } from './errors';
 
-export type { AppVersion, EgError, RepoSummary, StatusReport };
+export type {
+  AppVersion,
+  DiscardOutcome,
+  EgError,
+  IgnoreMode,
+  RepoSummary,
+  StageMode,
+  StatusReport,
+};
 export type { ChangeEntry, ChangeKind } from './bindings';
 export type { EgErrorLike, HumanizedError } from './errors';
 
@@ -55,6 +66,50 @@ export async function closeRepo(repoId: string): Promise<void> {
 
 export async function getStatus(repoId: string): Promise<StatusReport> {
   const result = await commands.statusGet(repoId);
+  if (result.status === 'error') throw result.error;
+  return result.data;
+}
+
+export async function stagePaths(
+  repoId: string,
+  paths: string[],
+  mode: StageMode,
+): Promise<StatusReport> {
+  const result = await commands.stage(repoId, paths, mode);
+  if (result.status === 'error') throw result.error;
+  return result.data;
+}
+
+export async function discardChanges(repoId: string, paths: string[]): Promise<DiscardOutcome> {
+  const result = await commands.discardChanges(repoId, paths);
+  if (result.status === 'error') throw result.error;
+  return result.data;
+}
+
+export async function cleanPreview(repoId: string): Promise<string[]> {
+  const result = await commands.cleanPreview(repoId);
+  if (result.status === 'error') throw result.error;
+  return result.data;
+}
+
+export async function cleanExecute(repoId: string, paths: string[]): Promise<DiscardOutcome> {
+  const result = await commands.cleanExecute(repoId, paths);
+  if (result.status === 'error') throw result.error;
+  return result.data;
+}
+
+export async function ignorePaths(
+  repoId: string,
+  paths: string[],
+  mode: IgnoreMode,
+): Promise<StatusReport> {
+  const result = await commands.ignorePaths(repoId, paths, mode);
+  if (result.status === 'error') throw result.error;
+  return result.data;
+}
+
+export async function undoOperation(repoId: string, opId: string): Promise<StatusReport> {
+  const result = await commands.undoOperation(repoId, opId);
   if (result.status === 'error') throw result.error;
   return result.data;
 }

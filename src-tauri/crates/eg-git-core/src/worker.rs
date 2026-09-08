@@ -14,11 +14,11 @@ use std::sync::mpsc::{channel, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use eg_types::{EgError, RepoId, RepoSummary, StatusReport};
+use eg_types::{EgError, IgnoreMode, RepoId, RepoSummary, StageMode, StatusReport};
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use uuid::Uuid;
 
-use super::{repo, status};
+use super::{ops, repo, status};
 
 /// Quiet period before a burst of filesystem events triggers one change event.
 pub const FS_DEBOUNCE: Duration = Duration::from_millis(300);
@@ -30,7 +30,43 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 enum RepoCommand {
     Status(Sender<Result<StatusReport, EgError>>),
     Summary(Sender<Result<RepoSummary, EgError>>),
+    Stage {
+        paths: Vec<String>,
+        mode: StageMode,
+        reply: Sender<Result<StatusReport, EgError>>,
+    },
+    Discard {
+        paths: Vec<String>,
+        safety: Arc<eg_safety::Safety>,
+        reply: Sender<Result<DiscardOutcome, EgError>>,
+    },
+    CleanPreview {
+        reply: Sender<Result<Vec<String>, EgError>>,
+    },
+    CleanExecute {
+        paths: Vec<String>,
+        safety: Arc<eg_safety::Safety>,
+        reply: Sender<Result<DiscardOutcome, EgError>>,
+    },
+    Ignore {
+        paths: Vec<String>,
+        mode: IgnoreMode,
+        reply: Sender<Result<StatusReport, EgError>>,
+    },
+    Undo {
+        op_id: String,
+        safety: Arc<eg_safety::Safety>,
+        reply: Sender<Result<StatusReport, EgError>>,
+    },
     Close(Sender<()>),
+}
+
+/// Discard result: the fresh status plus the op id for the 撤销 toast.
+#[derive(Debug, Clone, serde::Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscardOutcome {
+    pub op_id: String,
+    pub status: StatusReport,
 }
 
 /// Cloneable handle to a live worker thread.
@@ -54,6 +90,54 @@ impl WorkerHandle {
 
     pub fn request_summary(&self) -> Result<RepoSummary, EgError> {
         self.request(RepoCommand::Summary)
+    }
+
+    pub fn stage(&self, paths: Vec<String>, mode: StageMode) -> Result<StatusReport, EgError> {
+        self.request(|reply| RepoCommand::Stage { paths, mode, reply })
+    }
+
+    pub fn discard(
+        &self,
+        paths: Vec<String>,
+        safety: Arc<eg_safety::Safety>,
+    ) -> Result<DiscardOutcome, EgError> {
+        self.request(|reply| RepoCommand::Discard {
+            paths,
+            safety,
+            reply,
+        })
+    }
+
+    pub fn clean_preview(&self) -> Result<Vec<String>, EgError> {
+        self.request(|reply| RepoCommand::CleanPreview { reply })
+    }
+
+    pub fn clean_execute(
+        &self,
+        paths: Vec<String>,
+        safety: Arc<eg_safety::Safety>,
+    ) -> Result<DiscardOutcome, EgError> {
+        self.request(|reply| RepoCommand::CleanExecute {
+            paths,
+            safety,
+            reply,
+        })
+    }
+
+    pub fn ignore(&self, paths: Vec<String>, mode: IgnoreMode) -> Result<StatusReport, EgError> {
+        self.request(|reply| RepoCommand::Ignore { paths, mode, reply })
+    }
+
+    pub fn undo(
+        &self,
+        op_id: String,
+        safety: Arc<eg_safety::Safety>,
+    ) -> Result<StatusReport, EgError> {
+        self.request(|reply| RepoCommand::Undo {
+            op_id,
+            safety,
+            reply,
+        })
     }
 
     fn request<T>(
@@ -177,6 +261,61 @@ fn run_loop(
             }
             Ok(RepoCommand::Summary(tx)) => {
                 let _ = tx.send(repo::summarize(&repo_id, &repo, &canonical_path));
+            }
+            Ok(RepoCommand::Stage { paths, mode, reply }) => {
+                let _ = reply.send(
+                    ops::stage(&repo, &paths, mode).and_then(|()| status::status(&repo_id, &repo)),
+                );
+            }
+            Ok(RepoCommand::Discard {
+                paths,
+                safety,
+                reply,
+            }) => {
+                let _ = reply.send(ops::discard(&repo, &repo_id, &safety, &paths).and_then(
+                    |op_id| {
+                        status::status(&repo_id, &repo)
+                            .map(|status| DiscardOutcome { op_id, status })
+                    },
+                ));
+            }
+            Ok(RepoCommand::CleanPreview { reply }) => {
+                let _ = reply.send(status::status(&repo_id, &repo).map(|report| {
+                    report
+                        .unstaged
+                        .into_iter()
+                        .filter(|e| e.kind == eg_types::ChangeKind::Untracked)
+                        .map(|e| e.path)
+                        .collect()
+                }));
+            }
+            Ok(RepoCommand::CleanExecute {
+                paths,
+                safety,
+                reply,
+            }) => {
+                let _ = reply.send(ops::clean(&repo, &repo_id, &safety, &paths).and_then(
+                    |op_id| {
+                        status::status(&repo_id, &repo)
+                            .map(|status| DiscardOutcome { op_id, status })
+                    },
+                ));
+            }
+            Ok(RepoCommand::Ignore { paths, mode, reply }) => {
+                let _ = reply.send(
+                    ops::ignore(&repo, &paths, mode)
+                        .and_then(|_added| status::status(&repo_id, &repo)),
+                );
+            }
+            Ok(RepoCommand::Undo {
+                op_id,
+                safety,
+                reply,
+            }) => {
+                let _ = reply.send(
+                    ops::undo_operation(&repo, &repo_id, &safety, &op_id)
+                        .and_then(|()| status::status(&repo_id, &repo)),
+                );
             }
             Ok(RepoCommand::Close(tx)) => {
                 let _ = tx.send(());

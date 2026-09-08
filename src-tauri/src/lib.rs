@@ -2,6 +2,7 @@ pub mod commands;
 pub mod events;
 
 use eg_git_core::RepoManager;
+use eg_safety::Safety;
 use specta_typescript::Typescript;
 use tauri::{Manager, RunEvent};
 use tauri_specta::{collect_commands, collect_events, Builder, ErrorHandlingMode};
@@ -25,6 +26,12 @@ pub fn run() {
             commands::repo_init,
             commands::repo_close,
             commands::status_get,
+            commands::stage,
+            commands::discard_changes,
+            commands::clean_preview,
+            commands::clean_execute,
+            commands::ignore_paths,
+            commands::undo_operation,
         ])
         .events(collect_events![events::RepoChanged])
         .error_handling(ErrorHandlingMode::Result);
@@ -43,6 +50,9 @@ pub fn run() {
         .manage(RepoManager::default())
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {
+            // Safety operation log lives under the app data dir (TDD §4.3).
+            let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+            app.manage(Safety::new(&app_data));
             builder.mount_events(app);
             Ok(())
         })

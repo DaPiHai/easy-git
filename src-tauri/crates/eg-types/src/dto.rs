@@ -1,7 +1,7 @@
 //! IPC DTOs (TDD §4.6). Wire format is camelCase to keep the generated TS
 //! bindings idiomatic.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use specta::Type;
 
 /// Answer to the pipeline-proving `app_version` command (m1-plan F-01).
@@ -42,6 +42,22 @@ pub enum ChangeKind {
     Renamed,
     Conflicted,
     Untracked,
+}
+
+/// `stage(repo, paths, mode)` per TDD §4.6 (m1-plan R-05).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum StageMode {
+    Stage,
+    Unstage,
+}
+
+/// How a context-menu「忽略」entry writes .gitignore lines (m1-plan F-10).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum IgnoreMode {
+    ByPath,
+    ByExtension,
 }
 
 /// One row of the three-zone changes view (PRD §5.2, m1-plan R-02).

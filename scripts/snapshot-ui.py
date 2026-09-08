@@ -68,6 +68,7 @@ STATES = [
           repos: {{ r1: {json.dumps(SUMMARY_R1)} }},
           activeId: 'r1',
           status: {json.dumps(STATUS_R1)},
+          favorites: ['/home/hhdlj/easy-git'],
         }});
       }})()
     """, "10-dark-changes-zones.png"),
@@ -75,21 +76,53 @@ STATES = [
       (() => {
         const repoStore = window.__eg.repoStore;
         const s = repoStore.getState();
-        repoStore.setState({
-          selectedChange: s.status.unstaged[0],
-          favorites: ['/home/hhdlj/easy-git'],
-        });
+        repoStore.setState({ selectedChange: s.status.unstaged[0] });
       })()
     """, "11-dark-changes-selected.png"),
     ("""
       (() => {
-        document.querySelector('[data-testid="detail-toggle"]').click();
-        window.__eg.uiStore.getState().setView('history');
+        const row = [...document.querySelectorAll('[data-testid="change-row"]')]
+          .find(r => r.textContent.includes('dag.ts'));
+        row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
       })()
-    """, "12-dark-history.png"),
+    """, "16-dark-context-menu.png"),
     ("""
       (() => {
-        window.__eg.uiStore.getState().setView('changes');
+        const item = [...document.querySelectorAll('[role="menuitem"]')]
+          .find(i => i.textContent.includes('丢弃修改'));
+        item.click();
+      })()
+    """, "18-dark-discard-dialog.png"),
+    ("""
+      (() => {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        const row = [...document.querySelectorAll('[data-testid="change-row"]')]
+          .find(r => r.textContent.includes('assets/'));
+        row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+      })()
+    """, "19-dark-clean-menu.png"),
+    ("""
+      (() => {
+        const item = [...document.querySelectorAll('[role="menuitem"]')]
+          .find(i => i.textContent.includes('清理未跟踪'));
+        item.click();
+      })()
+    """, "20-dark-clean-dialog.png"),
+    ("""
+      (() => {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        window.__eg.toastStore.getState().push({
+          kind: 'info',
+          message: '已丢弃 1 个路径的修改',
+          action: { label: '撤销', onClick: () => {} },
+          duration: 60000,
+        });
+      })()
+    """, "17-dark-discard-toast.png"),
+    ("""
+      (() => {
+        const toastStore = window.__eg.toastStore;
+        toastStore.getState().dismiss(toastStore.getState().toasts[0].id);
         window.__eg.uiStore.getState().setSwitcherOpen(true);
       })()
     """, "13-dark-quick-switcher.png"),
@@ -99,15 +132,19 @@ STATES = [
         document.querySelector('[data-testid="theme-light"]').click();
       })()
     """, "14-light-changes-zones.png"),
-    ("""
-      (() => {
-        const repoStore = window.__eg.repoStore;
-        repoStore.setState({ status: null, selectedChange: null });
+    (f"""
+      (() => {{
         document.querySelector('[data-testid="theme-dark"]').click();
-      })()
+        window.__eg.repoStore.setState({{
+          status: {{
+            repoId: 'r1', branch: 'main', headOid: 'e1b2c3d4f5a6',
+            conflicted: [], staged: [], unstaged: [],
+          }},
+          selectedChange: null,
+        }});
+      }})()
     """, "15-dark-changes-clean.png"),
 ]
-
 
 class Snapper:
     def __init__(self, out_dir, base_url):

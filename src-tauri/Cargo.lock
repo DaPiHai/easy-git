@@ -765,6 +765,7 @@ name = "easy-git"
 version = "0.1.0"
 dependencies = [
  "eg-git-core",
+ "eg-safety",
  "eg-types",
  "serde",
  "serde_json",
@@ -782,6 +783,7 @@ dependencies = [
 name = "eg-git-core"
 version = "0.1.0"
 dependencies = [
+ "eg-safety",
  "eg-types",
  "git2",
  "notify",
@@ -810,8 +812,11 @@ dependencies = [
 name = "eg-safety"
 version = "0.1.0"
 dependencies = [
+ "eg-types",
+ "git2",
  "serde",
- "specta",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

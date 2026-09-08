@@ -26,6 +26,24 @@ export const commands = {
 	 *  IPC path (m1-plan R-02).
 	 */
 	statusGet: (repoId: string) => typedError<StatusReport, EgError>(__TAURI_INVOKE("status_get", { repoId })),
+	/**  Stages or unstages whole files and returns the fresh status (m1-plan R-05). */
+	stage: (repoId: string, paths: string[], mode: StageMode) => typedError<StatusReport, EgError>(__TAURI_INVOKE("stage", { repoId, paths, mode })),
+	/**
+	 *  Discard behind a safety snapshot; returns fresh status + the op id for the
+	 *  撤销 toast (m1-plan R-05, AGENTS.md 红线).
+	 */
+	discardChanges: (repoId: string, paths: string[]) => typedError<DiscardOutcome, EgError>(__TAURI_INVOKE("discard_changes", { repoId, paths })),
+	/**  Lists untracked entries for the clean confirmation dialog (m1-plan R-06). */
+	cleanPreview: (repoId: string) => typedError<string[], EgError>(__TAURI_INVOKE("clean_preview", { repoId })),
+	/**
+	 *  Snapshot-guarded cleanup of untracked paths (m1-plan R-06); returns the
+	 *  fresh status plus the op id for the 撤销 toast.
+	 */
+	cleanExecute: (repoId: string, paths: string[]) => typedError<DiscardOutcome, EgError>(__TAURI_INVOKE("clean_execute", { repoId, paths })),
+	/**  Appends ignore rules to .gitignore (m1-plan F-10). */
+	ignorePaths: (repoId: string, paths: string[], mode: IgnoreMode) => typedError<StatusReport, EgError>(__TAURI_INVOKE("ignore_paths", { repoId, paths, mode })),
+	/**  Restores the pre-operation content of a discard/clean (m1-plan W3). */
+	undoOperation: (repoId: string, opId: string) => typedError<StatusReport, EgError>(__TAURI_INVOKE("undo_operation", { repoId, opId })),
 };
 
 /** Events */
@@ -56,6 +74,12 @@ export type ChangeEntry = {
 /**  Change classification driving the semantic icons/colors (UI doc §3.3/§9). */
 export type ChangeKind = "added" | "modified" | "deleted" | "renamed" | "conflicted" | "untracked";
 
+/**  Discard result: the fresh status plus the op id for the 撤销 toast. */
+export type DiscardOutcome = {
+	opId: string,
+	status: StatusReport,
+};
+
 export type EgError = 
 /**  Path is not a Git repository (or cannot be opened). */
 { code: "repo_not_found"; path: string } | 
@@ -75,6 +99,9 @@ export type EgError =
 { code: "cancelled" } | 
 /**  Anything unexpected; `context` lands in the local log file. */
 { code: "internal"; context: string };
+
+/**  How a context-menu「忽略」entry writes .gitignore lines (m1-plan F-10). */
+export type IgnoreMode = "by_path" | "by_extension";
 
 /**  The frontend refreshes status for `repo_id` (debounced 300ms upstream). */
 export type RepoChanged = {
@@ -96,6 +123,9 @@ export type RepoSummary = {
 	/**  True when the repository has no commits yet (unborn HEAD). */
 	isEmpty: boolean,
 };
+
+/**  `stage(repo, paths, mode)` per TDD §4.6 (m1-plan R-05). */
+export type StageMode = "stage" | "unstage";
 
 /**  `status_get` answer: pre-grouped for the three-zone view. */
 export type StatusReport = {

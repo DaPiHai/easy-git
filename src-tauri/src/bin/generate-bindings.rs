@@ -15,6 +15,12 @@ fn main() {
             easy_git::commands::repo_init,
             easy_git::commands::repo_close,
             easy_git::commands::status_get,
+            easy_git::commands::stage,
+            easy_git::commands::discard_changes,
+            easy_git::commands::clean_preview,
+            easy_git::commands::clean_execute,
+            easy_git::commands::ignore_paths,
+            easy_git::commands::undo_operation,
         ])
         .events(collect_events![easy_git::events::RepoChanged])
         .error_handling(ErrorHandlingMode::Result);

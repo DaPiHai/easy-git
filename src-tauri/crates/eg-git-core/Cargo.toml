@@ -7,6 +7,7 @@ rust-version.workspace = true
 description = "EasyGit git interaction layer (libgit2 + git CLI bridge, TDD §4.2)"
 
 [dependencies]
+eg-safety = { path = "../eg-safety" }
 eg-types = { path = "../eg-types" }
 git2 = { version = "0.21", default-features = false } # remote transports enabled in W9
 notify = "8"
