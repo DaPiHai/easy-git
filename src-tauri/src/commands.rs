@@ -5,8 +5,8 @@ use eg_git_core::worker::{ChangeSink, DiscardOutcome};
 use eg_git_core::RepoManager;
 use eg_safety::Safety;
 use eg_types::{
-    AppVersion, CommitOutcome, CommitRequest, ConfigScope, EgError, IgnoreMode, RepoSummary,
-    StageMode, StatusReport,
+    AppVersion, CommitDetail, CommitOutcome, CommitRequest, ConfigScope, EgError, IgnoreMode,
+    LogFilter, LogPage, RepoSummary, StageMode, StatusReport,
 };
 use tauri::{AppHandle, State};
 use tauri_specta::Event;
@@ -197,6 +197,43 @@ pub async fn config_set(
 ) -> Result<(), EgError> {
     let handle = manager.get(&repo_id)?;
     run_blocking(move || handle.config_set(scope, key, value)).await
+}
+
+/// One page of the lane-annotated history log (m1-plan R-10 / F-15).
+#[tauri::command]
+#[specta::specta]
+pub async fn log_page(
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+    offset: u32,
+    limit: u32,
+    filter: LogFilter,
+) -> Result<LogPage, EgError> {
+    let handle = manager.get(&repo_id)?;
+    run_blocking(move || handle.log_page(offset, limit, filter)).await
+}
+
+/// Commit detail with changed files (m1-plan F-16).
+#[tauri::command]
+#[specta::specta]
+pub async fn commit_detail(
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+    oid: String,
+) -> Result<CommitDetail, EgError> {
+    let handle = manager.get(&repo_id)?;
+    run_blocking(move || handle.commit_detail(oid)).await
+}
+
+/// Local branch short names, current first (m1-plan F-17).
+#[tauri::command]
+#[specta::specta]
+pub async fn list_branches(
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+) -> Result<Vec<String>, EgError> {
+    let handle = manager.get(&repo_id)?;
+    run_blocking(move || handle.list_branches()).await
 }
 
 async fn run_blocking<T, F>(f: F) -> Result<T, EgError>

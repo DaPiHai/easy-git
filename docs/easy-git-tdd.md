@@ -260,3 +260,17 @@ IPC 序列化为 `{code, params, message_zh, hint?}`；前端 `lib/ipc/errors.ts
 | 7 | 设置页入口 | 顶栏齿轮开关 settings 视图（MainView 增加 `'settings'`，无激活仓库也可进入）；底栏简洁/专家按钮接 uiStore.expertMode（localStorage 持久化，v1 仅存偏好）。 |
 | 8 | 测试 | Rust +8（commit 根/非根 amend、partial 约束、空 subject、缺身份、config 往返）；前端 +17（CommitBox 5、lensStore 4、Settings 4、BottomBar lens 4）。快照 judge 发现的两处渲染问题（无仓库时详情面板不应出现提交框；合成右键事件缺坐标导致菜单锚到 (0,0)）已修复，17 张快照全部 pass。 |
 | 9 | deb 打包排除辅助 bin | `generate-bindings` bin 曾被打进 deb（/usr/bin 下出现两个可执行）。改为 `required-features = ["gen-bindings"]`：`tauri build` 不启用该 feature 时 cargo 直接跳过该 bin；CI 与手动生成改用 `cargo run --features gen-bindings --bin generate-bindings`。 |
+
+### 2026-09-08 · W5 历史 DAG 图偏差记录
+
+| # | 条目 | 说明 |
+| --- | --- | --- |
+| 1 | lane 预计算 | 几何在 Rust 侧逐行算好（Lanes：lane 槽位持有「期望的父 oid」）：子先父后的 topo 序；分支 tip 落新右槽、首父直落本槽、其余父入已有槽（merge 斜线）或新槽；oid 重复的槽合并（join 线）；根提交槽终止，下方槽左移产生全高斜线。`node.lane`/`from` 用本行（压缩前）坐标系，`to` 用压缩后坐标系，join 线 `to` 保持指向本行节点。渲染契约：`from==to` 直线；`to==node.lane` 自上入节点；`from==node.lane` 自节点出；其余全高斜线。有 diamond/线性/终止断言测试。 |
+| 2 | 分页语义 | `offset` 按「扫描过的提交数」计而非返回行数——author/message 过滤跳过的行也要计入，翻页才稳定；过滤扫描上限 MAX_SCAN=100k 强制终止。默认 500 行/页（PRD §5.3），滚动近底 30 行内续读。 |
+| 3 | lane 着色偏差 | UI 文档 §3.4 要求「按分支名哈希稳定分配」，v1 实现为按 lane 序号循环 8 色板（lane 0 恒为 branch-1，主干 2.5px），分支名稳定着色与分支看板同色随 W7 一起做（需要 ref→lane 的溯名算法）。已在测试断言 lane0=color0。 |
+| 4 | commit-graph 缺位 | R-10 提到的「commit-graph 后台生成」不落地：libgit2 的 revwalk 不读 commit-graph 文件，写了也加速不了。mid-size（5001 提交）实测 500 行页 <100ms（深 offset 同样），预算 1s（#[ignore] 性能测试）；十万级仓库再评估。 |
+| 5 | specta 数字类型 | `author_time: i64` 被 specta 拒绝导出（BigInt 防精度丢失），改 `f64`（git 时间戳远小于 2^53，无精度损失）。后续 DTO 一律避免 i64/u64。 |
+| 6 | 渲染分层 | 左列 96px 用 sticky `<canvas>`（视口高，dpr 缩放，滚动时只画可见行），DOM 行绝对定位只挂可见窗口 ±15 行；jsdom 无 canvas 后端，draw 前判空（测试屏 getContext 噪音已屏蔽）。 |
+| 7 | 原生控件主题 | 暗色下 `<select>` 白底黑字（原生控件不吃 CSS 变量）——tokens.css 补 `color-scheme: dark/light` 按 data-theme 声明，judge 验收通过。 |
+| 8 | 右键桩 R-11 | 提交行右键菜单：查看变更详情（可用）+ 在此建分支/摘取/回滚（disabled，W7/W8 开放）；不接后端。 |
+| 9 | 测试 | Rust +8（lane 几何 diamond、refs 装饰、分页连续性、三过滤、详情文件计数、空仓库、list_branches + perf）；前端 +18（graph 几何 3、historyStore 6、HistoryPage 6、time 3）。快照 26-28 judge 通过（修复：暗色原生 select、菱形节点、color-scheme）。 |

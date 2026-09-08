@@ -35,6 +35,9 @@ pub fn run() {
             commands::commit,
             commands::config_get,
             commands::config_set,
+            commands::log_page,
+            commands::commit_detail,
+            commands::list_branches,
         ])
         .events(collect_events![events::RepoChanged])
         .error_handling(ErrorHandlingMode::Result);

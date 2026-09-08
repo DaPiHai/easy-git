@@ -5,6 +5,7 @@ import { t } from '../../lib/i18n';
 import { clampDetailWidth, useUiStore, DETAIL_DEFAULT_WIDTH } from '../../stores/uiStore';
 import { useRepoStore } from '../../stores/repoStore';
 import { CommitBox } from '../commit/CommitBox';
+import { CommitDetailPanel } from '../history/CommitDetailPanel';
 import { KIND_META } from '../changes/kind';
 
 /**
@@ -76,11 +77,13 @@ export function DetailPanel() {
   );
 }
 
-/** Context-driven content (PRD §6.1): commit box / file detail / empty. */
+/** Context-driven content (PRD §6.1): commit box / file detail / commit detail. */
 function DetailContent() {
   const selectedChange = useRepoStore((s) => s.selectedChange);
   const view = useUiStore((s) => s.view);
   const hasRepo = useRepoStore((s) => s.activeId !== null);
+
+  if (view === 'history') return <CommitDetailPanel />;
 
   if (selectedChange) {
     const meta = KIND_META[selectedChange.kind];

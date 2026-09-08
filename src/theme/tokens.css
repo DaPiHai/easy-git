@@ -6,6 +6,9 @@
  */
 
 :root {
+  /* Native controls (select, scrollbars) follow the active theme. */
+  color-scheme: dark;
+
   /* §3.1 dark theme (default baseline) */
   --eg-canvas: #010102;
   --eg-surface-1: #0f1011;
@@ -53,6 +56,8 @@
 }
 
 :root[data-theme='light'] {
+  color-scheme: light;
+
   /* §3.2 light theme, derived from the upstream inverse tokens */
   --eg-canvas: #ffffff;
   --eg-surface-1: #f5f6f6;

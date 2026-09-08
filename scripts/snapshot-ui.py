@@ -196,6 +196,85 @@ STATES = [
         window.__eg.uiStore.getState().setView('changes');
       }})()
     """, "25-dark-back-to-changes.png"),
+    # ---- W5: history DAG / commit detail ----
+    (f"""
+      (() => {{
+        const now = Math.floor(Date.now() / 1000);
+        const e = (i, subject, author, node, lines, laneCount, extra = {{}}) => ({{
+          oid: 'c' + i.toString().padStart(3, '0') + 'abcdef',
+          shortOid: 'c' + i.toString().padStart(3, '0') + 'ab',
+          subject,
+          body: '',
+          authorName: author,
+          authorEmail: 'dev@ex.com',
+          authorTime: now - i * 900,
+          parentCount: node.merge ? 2 : 1,
+          isHead: false,
+          refs: {{ branches: [], remotes: [], tags: [] }},
+          node,
+          lines,
+          laneCount,
+          ...extra,
+        }});
+        const trunk = (i, s, a, extra) => e(i, s, a, {{ lane: 0, color: 0, merge: false }},
+          [{{ from: 0, to: 0, color: 0 }}], 1, extra);
+        const side = (i, s, a, extra) => e(i, s, a, {{ lane: 1, color: 1, merge: false }},
+          [{{ from: 1, to: 1, color: 1 }}, {{ from: 0, to: 0, color: 0 }}], 2, extra);
+        const rows = [
+          e(0, 'merge: 合并 feature/dag-render', '张三',
+            {{ lane: 0, color: 0, merge: true }},
+            [{{ from: 0, to: 0, color: 0 }}, {{ from: 0, to: 1, color: 1 }}], 2,
+            {{ isHead: true, refs: {{ branches: ['main'], remotes: ['origin/main'], tags: [] }} }}),
+          side(1, 'feat: DAG 分支着色与合并菱形', '李四',
+            {{ refs: {{ branches: [], remotes: [], tags: [] }} }}),
+          trunk(2, 'fix: 提交框 Ctrl+Enter 提交', '张三'),
+          side(3, 'feat: 命令透视面板', '李四',
+            {{ refs: {{ branches: [], remotes: [], tags: ['v0.9'] }} }}),
+          e(4, 'chore: 初始化仓库基础', '张三',
+            {{ lane: 0, color: 0, merge: false }}, [{{ from: 1, to: 0, color: 1 }}], 2),
+        ];
+        for (let i = 5; i < 35; i++) {{
+          rows.push(trunk(i, ['docs: 补充快速开始指南', 'refactor: 抽出 lane 预计算',
+            'test: 补充分页往返用例', 'style: 主题令牌微调'][i % 4], i % 2 ? '李四' : '张三'));
+        }}
+        window.__eg.historyStore.getState().seed({{
+          entries: rows,
+          branches: ['main', 'feature/dag-render'],
+          branch: 'main',
+          filter: {{ branch: null, author: null, message: null }},
+        }});
+        window.__eg.uiStore.getState().setView('history');
+      }})()
+    """, "26-dark-history.png"),
+    (f"""
+      (() => {{
+        const hs = window.__eg.historyStore.getState();
+        hs.seed({{
+          selectedOid: hs.entries[0].oid,
+          detailLoading: false,
+          detail: {{
+            oid: hs.entries[0].oid,
+            shortOid: 'c000ab',
+            subject: 'merge: 合并 feature/dag-render',
+            body: 'DAG 渲染的 lane 预计算与合并菱形。',
+            authorName: '张三',
+            authorEmail: 'dev@ex.com',
+            authorTime: Math.floor(Date.now() / 1000),
+            refs: {{ branches: ['main'], remotes: ['origin/main'], tags: [] }},
+            files: [
+              {{ path: 'src/features/history/graph.ts', oldPath: null, kind: 'added', added: 96, deleted: 0 }},
+              {{ path: 'src/features/history/HistoryPage.tsx', oldPath: null, kind: 'modified', added: 48, deleted: 12 }},
+              {{ path: 'src/stores/historyStore.ts', oldPath: null, kind: 'modified', added: 31, deleted: 4 }},
+            ],
+          }},
+        }});
+      }})()
+    """, "27-dark-history-detail.png"),
+    (f"""
+      (() => {{
+        document.querySelector('[data-testid="theme-light"]').click();
+      }})()
+    """, "28-light-history.png"),
 ]
 
 class Snapper:

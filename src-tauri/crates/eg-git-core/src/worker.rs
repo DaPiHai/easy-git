@@ -18,7 +18,7 @@ use eg_types::{ConfigScope, EgError, IgnoreMode, RepoId, RepoSummary, StageMode,
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use uuid::Uuid;
 
-use super::{commit, config, ops, repo, status};
+use super::{commit, config, log, ops, repo, status};
 
 /// Quiet period before a burst of filesystem events triggers one change event.
 pub const FS_DEBOUNCE: Duration = Duration::from_millis(300);
@@ -72,6 +72,19 @@ enum RepoCommand {
         key: String,
         value: String,
         reply: Sender<Result<(), EgError>>,
+    },
+    LogPage {
+        offset: u32,
+        limit: u32,
+        filter: eg_types::LogFilter,
+        reply: Sender<Result<eg_types::LogPage, EgError>>,
+    },
+    CommitDetail {
+        oid: String,
+        reply: Sender<Result<eg_types::CommitDetail, EgError>>,
+    },
+    ListBranches {
+        reply: Sender<Result<Vec<String>, EgError>>,
     },
     Close(Sender<()>),
 }
@@ -178,6 +191,28 @@ impl WorkerHandle {
             value,
             reply,
         })
+    }
+
+    pub fn log_page(
+        &self,
+        offset: u32,
+        limit: u32,
+        filter: eg_types::LogFilter,
+    ) -> Result<eg_types::LogPage, EgError> {
+        self.request(|reply| RepoCommand::LogPage {
+            offset,
+            limit,
+            filter,
+            reply,
+        })
+    }
+
+    pub fn commit_detail(&self, oid: String) -> Result<eg_types::CommitDetail, EgError> {
+        self.request(|reply| RepoCommand::CommitDetail { oid, reply })
+    }
+
+    pub fn list_branches(&self) -> Result<Vec<String>, EgError> {
+        self.request(|reply| RepoCommand::ListBranches { reply })
     }
 
     fn request<T>(
@@ -370,6 +405,20 @@ fn run_loop(
                 reply,
             }) => {
                 let _ = reply.send(config::config_set(Some(&repo), scope, &key, &value));
+            }
+            Ok(RepoCommand::LogPage {
+                offset,
+                limit,
+                filter,
+                reply,
+            }) => {
+                let _ = reply.send(log::log_page(&repo, &repo_id, offset, limit, &filter));
+            }
+            Ok(RepoCommand::CommitDetail { oid, reply }) => {
+                let _ = reply.send(log::commit_detail(&repo, &oid));
+            }
+            Ok(RepoCommand::ListBranches { reply }) => {
+                let _ = reply.send(log::list_branches(&repo));
             }
             Ok(RepoCommand::Close(tx)) => {
                 let _ = tx.send(());

@@ -53,6 +53,12 @@ export const commands = {
 	configGet: (repoId: string, scope: ConfigScope, key: string) => typedError<string | null, EgError>(__TAURI_INVOKE("config_get", { repoId, scope, key })),
 	/**  Writes one config key in the repo or global scope (m1-plan R-09 / F-14). */
 	configSet: (repoId: string, scope: ConfigScope, key: string, value: string) => typedError<null, EgError>(__TAURI_INVOKE("config_set", { repoId, scope, key, value })),
+	/**  One page of the lane-annotated history log (m1-plan R-10 / F-15). */
+	logPage: (repoId: string, offset: number, limit: number, filter: LogFilter) => typedError<LogPage, EgError>(__TAURI_INVOKE("log_page", { repoId, offset, limit, filter })),
+	/**  Commit detail with changed files (m1-plan F-16). */
+	commitDetail: (repoId: string, oid: string) => typedError<CommitDetail, EgError>(__TAURI_INVOKE("commit_detail", { repoId, oid })),
+	/**  Local branch short names, current first (m1-plan F-17). */
+	listBranches: (repoId: string) => typedError<string[], EgError>(__TAURI_INVOKE("list_branches", { repoId })),
 };
 
 /** Events */
@@ -83,12 +89,71 @@ export type ChangeEntry = {
 /**  Change classification driving the semantic icons/colors (UI doc §3.3/§9). */
 export type ChangeKind = "added" | "modified" | "deleted" | "renamed" | "conflicted" | "untracked";
 
+/**  Commit detail payload (m1-plan F-16). */
+export type CommitDetail = {
+	oid: string,
+	shortOid: string,
+	subject: string,
+	body: string,
+	authorName: string,
+	authorEmail: string,
+	authorTime: number | null,
+	refs: CommitRefs,
+	files: CommitFile[],
+};
+
+/**  One file changed by a commit (m1-plan F-16 detail panel). */
+export type CommitFile = {
+	path: string,
+	oldPath: string | null,
+	kind: ChangeKind,
+	added: number,
+	deleted: number,
+};
+
+/**  One row of the history DAG (PRD §5.3, m1-plan F-15). */
+export type CommitLogEntry = {
+	oid: string,
+	shortOid: string,
+	/**  First line of the commit message. */
+	subject: string,
+	/**  Body after the subject line (without the leading blank line). */
+	body: string,
+	authorName: string,
+	authorEmail: string,
+	/**
+	 *  Author time, seconds since the Unix epoch. f64 keeps specta's TS
+	 *  export happy (i64 is forbidden); git timestamps are far below 2^53.
+	 */
+	authorTime: number | null,
+	/**  Number of parents; > 1 means merge (rendered as a diamond). */
+	parentCount: number,
+	/**  True for the commit HEAD points at. */
+	isHead: boolean,
+	refs: CommitRefs,
+	node: GraphNode,
+	/**  Lines drawn below the node towards the next row. */
+	lines: GraphLine[],
+	/**  Number of lanes in this row (canvas sizing / pass-through drawing). */
+	laneCount: number,
+};
+
 /**  Commit result: new commit id plus refreshed summary/status for the UI. */
 export type CommitOutcome = {
 	commitId: string,
 	amended: boolean,
 	summary: RepoSummary,
 	status: StatusReport,
+};
+
+/**  Branch/tag decorations on a commit, e.g. `main`, `origin/main`, `v1.0`. */
+export type CommitRefs = {
+	/**  Local branches (short names), the current one first. */
+	branches: string[],
+	/**  Remote-tracking branches (short `origin/xxx` form). */
+	remotes: string[],
+	/**  Tags (short names). */
+	tags: string[],
 };
 
 /**
@@ -131,8 +196,49 @@ export type EgError =
 /**  Anything unexpected; `context` lands in the local log file. */
 { code: "internal"; context: string };
 
+/**
+ *  Graph geometry for one history row (m1-plan R-10). Lanes are pre-computed
+ *  in Rust so the frontend canvas only draws.
+ */
+export type GraphLine = {
+	/**  Lane index in the row above (or this row, for pass-through lines). */
+	from: number,
+	/**  Lane index in the row below; `from == to` is a straight vertical. */
+	to: number,
+	/**  Index into the 8-color branch palette (UI doc §3.4). */
+	color: number,
+};
+
+/**  Node marker of one history row. */
+export type GraphNode = {
+	lane: number,
+	color: number,
+	/**  Merge commits render as a diamond (UI doc §6.7). */
+	merge: boolean,
+};
+
 /**  How a context-menu「忽略」entry writes .gitignore lines (m1-plan F-10). */
 export type IgnoreMode = "by_path" | "by_extension";
+
+/**  Log filters (m1-plan F-17). `None` fields mean no restriction. */
+export type LogFilter = {
+	/**  Start the walk from this branch instead of HEAD (short name). */
+	branch: string | null,
+	/**  Case-insensitive substring on the author name. */
+	author: string | null,
+	/**  Case-insensitive substring on the commit message. */
+	message: string | null,
+};
+
+/**  One page of the topo-sorted, lane-annotated log (m1-plan R-10). */
+export type LogPage = {
+	repoId: string,
+	entries: CommitLogEntry[],
+	/**  Offset to request next; `None` when the walk is exhausted. */
+	nextOffset: number | null,
+	/**  Current branch short name (for the HEAD ring / filter dropdown). */
+	branch: string | null,
+};
 
 /**  The frontend refreshes status for `repo_id` (debounced 300ms upstream). */
 export type RepoChanged = {

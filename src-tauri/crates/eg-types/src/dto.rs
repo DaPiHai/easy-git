@@ -121,3 +121,115 @@ pub enum ConfigScope {
     Repo,
     Global,
 }
+
+/// Graph geometry for one history row (m1-plan R-10). Lanes are pre-computed
+/// in Rust so the frontend canvas only draws.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphLine {
+    /// Lane index in the row above (or this row, for pass-through lines).
+    pub from: u32,
+    /// Lane index in the row below; `from == to` is a straight vertical.
+    pub to: u32,
+    /// Index into the 8-color branch palette (UI doc §3.4).
+    pub color: u8,
+}
+
+/// Node marker of one history row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphNode {
+    pub lane: u32,
+    pub color: u8,
+    /// Merge commits render as a diamond (UI doc §6.7).
+    pub merge: bool,
+}
+
+/// Branch/tag decorations on a commit, e.g. `main`, `origin/main`, `v1.0`.
+#[derive(Debug, Clone, Default, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitRefs {
+    /// Local branches (short names), the current one first.
+    pub branches: Vec<String>,
+    /// Remote-tracking branches (short `origin/xxx` form).
+    pub remotes: Vec<String>,
+    /// Tags (short names).
+    pub tags: Vec<String>,
+}
+
+/// One row of the history DAG (PRD §5.3, m1-plan F-15).
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitLogEntry {
+    pub oid: String,
+    pub short_oid: String,
+    /// First line of the commit message.
+    pub subject: String,
+    /// Body after the subject line (without the leading blank line).
+    pub body: String,
+    pub author_name: String,
+    pub author_email: String,
+    /// Author time, seconds since the Unix epoch. f64 keeps specta's TS
+    /// export happy (i64 is forbidden); git timestamps are far below 2^53.
+    pub author_time: f64,
+    /// Number of parents; > 1 means merge (rendered as a diamond).
+    pub parent_count: u32,
+    /// True for the commit HEAD points at.
+    pub is_head: bool,
+    pub refs: CommitRefs,
+    pub node: GraphNode,
+    /// Lines drawn below the node towards the next row.
+    pub lines: Vec<GraphLine>,
+    /// Number of lanes in this row (canvas sizing / pass-through drawing).
+    pub lane_count: u32,
+}
+
+/// Log filters (m1-plan F-17). `None` fields mean no restriction.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct LogFilter {
+    /// Start the walk from this branch instead of HEAD (short name).
+    pub branch: Option<String>,
+    /// Case-insensitive substring on the author name.
+    pub author: Option<String>,
+    /// Case-insensitive substring on the commit message.
+    pub message: Option<String>,
+}
+
+/// One page of the topo-sorted, lane-annotated log (m1-plan R-10).
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct LogPage {
+    pub repo_id: RepoId,
+    pub entries: Vec<CommitLogEntry>,
+    /// Offset to request next; `None` when the walk is exhausted.
+    pub next_offset: Option<u32>,
+    /// Current branch short name (for the HEAD ring / filter dropdown).
+    pub branch: Option<String>,
+}
+
+/// One file changed by a commit (m1-plan F-16 detail panel).
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitFile {
+    pub path: String,
+    pub old_path: Option<String>,
+    pub kind: ChangeKind,
+    pub added: u32,
+    pub deleted: u32,
+}
+
+/// Commit detail payload (m1-plan F-16).
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitDetail {
+    pub oid: String,
+    pub short_oid: String,
+    pub subject: String,
+    pub body: String,
+    pub author_name: String,
+    pub author_email: String,
+    pub author_time: f64,
+    pub refs: CommitRefs,
+    pub files: Vec<CommitFile>,
+}

@@ -7,12 +7,16 @@ import { open as dialogOpen } from '@tauri-apps/plugin-dialog';
 import {
   commands,
   type AppVersion,
+  type CommitDetail,
+  type CommitLogEntry,
   type CommitOutcome,
   type CommitRequest,
   type ConfigScope,
   type DiscardOutcome,
   type EgError,
   type IgnoreMode,
+  type LogFilter,
+  type LogPage,
   type RepoSummary,
   type StageMode,
   type StatusReport,
@@ -22,12 +26,16 @@ import { humanizeEgError } from './errors';
 
 export type {
   AppVersion,
+  CommitDetail,
+  CommitLogEntry,
   CommitOutcome,
   CommitRequest,
   ConfigScope,
   DiscardOutcome,
   EgError,
   IgnoreMode,
+  LogFilter,
+  LogPage,
   RepoSummary,
   StageMode,
   StatusReport,
@@ -147,6 +155,32 @@ export async function setConfig(
 ): Promise<void> {
   const result = await commands.configSet(repoId, scope, key, value);
   if (result.status === 'error') throw result.error;
+}
+
+/** One page of the lane-annotated history log (m1-plan R-10 / F-15). */
+export async function logPage(
+  repoId: string,
+  offset: number,
+  limit: number,
+  filter: LogFilter,
+): Promise<LogPage> {
+  const result = await commands.logPage(repoId, offset, limit, filter);
+  if (result.status === 'error') throw result.error;
+  return result.data;
+}
+
+/** Commit detail with the changed-file list (m1-plan F-16). */
+export async function commitDetail(repoId: string, oid: string): Promise<CommitDetail> {
+  const result = await commands.commitDetail(repoId, oid);
+  if (result.status === 'error') throw result.error;
+  return result.data;
+}
+
+/** Local branch short names, current first (m1-plan F-17). */
+export async function listBranches(repoId: string): Promise<string[]> {
+  const result = await commands.listBranches(repoId);
+  if (result.status === 'error') throw result.error;
+  return result.data;
 }
 
 /** Native directory picker; null when cancelled or outside the Tauri shell. */

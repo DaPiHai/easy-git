@@ -3,6 +3,7 @@
 
 pub mod commit;
 pub mod config;
+pub mod log;
 pub mod ops;
 pub mod repo;
 pub mod status;

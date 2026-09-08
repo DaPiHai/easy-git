@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import { useHistoryStore } from './stores/historyStore';
 import { useLensStore } from './stores/lensStore';
 import { useRepoStore } from './stores/repoStore';
 import { useUiStore } from './stores/uiStore';
@@ -14,6 +15,7 @@ if (import.meta.env.DEV) {
     uiStore: useUiStore,
     toastStore: useToastStore,
     lensStore: useLensStore,
+    historyStore: useHistoryStore,
   };
 }
 
