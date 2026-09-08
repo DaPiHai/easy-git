@@ -223,3 +223,15 @@ IPC 序列化为 `{code, params, message_zh, hint?}`；前端 `lib/ipc/errors.ts
 | 8 | 日志 | tracing + tracing-subscriber 已接入，W1 仅 stderr（`RUST_LOG` env-filter）；本地文件 sink 随 W2 落地（§1 表格中"本地文件"目标不变）。 |
 | 9 | eg-git-core 依赖 | git2 0.21 以 `default-features = false` 引入（M1 本地操作够用；HTTPS/SSH 传输到 W9 再开 feature，届时由 CLI 兜底）；libgit2 语义以单测锚定（init/unborn HEAD）。 |
 | 10 | eg-providers | M1 只落 §4.4 接口：trait 用原生 `async fn`（工作区内部消费，`#[allow(async_fn_in_trait)]`，M2 需要 spawn 时再降糖 `impl Future + Send`）。 |
+
+### 2026-09-08 · W2 仓库打开与状态底座偏差记录
+
+| # | 条目 | 说明 |
+| --- | --- | --- |
+| 1 | fs-watch 实现 | notify 8 稳定版 + worker 自实现 300ms 防抖（未用 notify-debouncer-full：最新为 RC 版本；worker 命令循环内以 quiet-period 合并事件，语义与 TDD §4.6「防抖 300ms」一致），`.git` 内部变更被过滤。 |
+| 2 | 事件定义位置 | `RepoChanged` 事件结构放在 app crate（`src/events.rs`）而非 eg-types：tauri-specta 的 Event 宏依赖 tauri。事件名按 TDD 钉为 `repo://changed`（`#[tauri_specta(event_name=...)]`）；当前负载仅 `{repoId}`，未来更复杂的负载 DTO 仍进 eg-types。 |
+| 3 | RepoCommand 通道 | Worker 用 std mpsc + oneshot 回执（命令枚举 Status/Summary/Close），IPC 侧 `status_get` 为 async 命令 + `spawn_blocking` 转发，15s 超时；符合 §4.1 每仓库一线程模型。 |
+| 4 | 仓库去重 | RepoManager 按规范路径（canonicalize）去重：重复 open 同一路径返回既有 worker 的摘要，不新建线程。 |
+| 5 | repo_init 语义 | `repo_init` 对已是仓库的目录幂等（等价 open），新建用 libgit2 init；clone（R-04 P1）与底栏任务进度（F-07 P1）顺延到下次会话。 |
+| 6 | 生成器同步约束 | `generate-bindings` bin 的命令/事件注册表必须与 `run()` 保持一致（W2 首跑踩坑：漏注册导致绑定缺失），后续考虑提取共享注册函数。 |
+| 7 | 真实 status 语义 | status 分组：staged=index-vs-HEAD，unstaged=worktree-vs-index（含未跟踪），conflicted=合并冲突；未跟踪整目录折叠为 `dir/`（与 git status 一致）；重命名检测 `renames_head_to_index`，条目 path 取 delta.new_file。全部有断言测试（9 例）+ mid-size 打开+status < 1.5s 实测（#[ignore] 性能测试）。 |

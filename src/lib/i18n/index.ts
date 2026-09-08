@@ -25,3 +25,5 @@ export function setLocale(locale: string): void {
 export function getLocale(): string {
   return currentLocale;
 }
+
+export type { MessageKey };

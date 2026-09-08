@@ -57,6 +57,10 @@ interface UiState {
   setDetailWidth: (width: number) => void;
   toggleDetail: () => void;
 
+  /** Ctrl/Cmd+K quick repo switcher (F-05 prototype). */
+  switcherOpen: boolean;
+  setSwitcherOpen: (open: boolean) => void;
+
   /** Populated via IPC once the Tauri shell is up; null in browser previews. */
   appVersion: AppVersionInfo | null;
   fetchAppVersion: () => Promise<void>;
@@ -114,6 +118,9 @@ export const useUiStore = create<UiState>()((set, get) => {
     detailWidth: DETAIL_DEFAULT_WIDTH,
     setDetailWidth: (width) => set({ detailWidth: width }),
     toggleDetail: () => set((s) => ({ detailOpen: !s.detailOpen })),
+
+    switcherOpen: false,
+    setSwitcherOpen: (open) => set({ switcherOpen: open }),
 
     appVersion: null,
     fetchAppVersion: async () => {

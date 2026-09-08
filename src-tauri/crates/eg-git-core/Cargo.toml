@@ -7,9 +7,12 @@ rust-version.workspace = true
 description = "EasyGit git interaction layer (libgit2 + git CLI bridge, TDD §4.2)"
 
 [dependencies]
+eg-types = { path = "../eg-types" }
 git2 = { version = "0.21", default-features = false } # remote transports enabled in W9
+notify = "8"
 serde.workspace = true
 specta.workspace = true
+uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 tempfile.workspace = true

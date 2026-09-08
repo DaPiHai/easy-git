@@ -1,6 +1,11 @@
 //! eg-git-core: the only place git logic lives (besides eg-safety).
-//! Command implementations per TDD §4.2 start landing in W2 (R-01/R-02).
 //! Every behavior must match real git and ship with assertion tests.
+
+pub mod repo;
+pub mod status;
+pub mod worker;
+
+pub use worker::{RepoManager, WorkerHandle};
 
 #[cfg(test)]
 mod tests {

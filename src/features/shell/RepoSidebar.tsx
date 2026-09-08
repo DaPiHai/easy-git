@@ -7,16 +7,25 @@ import {
   PanelLeftOpen,
   Star,
 } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { t } from '../../lib/i18n';
+import { useRepoStore } from '../../stores/repoStore';
 import { useUiStore } from '../../stores/uiStore';
 
 /**
  * Repo sidebar (UI doc §5.1): 232px list, collapsible to a 48px icon rail.
- * Repo data arrives in W2 (F-05); sections render honest empty states meanwhile.
+ * Favorites + recents give one-click opening (m1-plan F-05).
  */
 export function RepoSidebar() {
   const collapsed = useUiStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
+  const favorites = useRepoStore((s) => s.favorites);
+  const recents = useRepoStore((s) => s.recents);
+  const openByPath = useRepoStore((s) => s.openByPath);
+  const toggleFavorite = useRepoStore((s) => s.toggleFavorite);
+  const pickAndInit = useRepoStore((s) => s.pickAndInit);
+
+  const favoriteRepos = recents.filter((r) => favorites.includes(r.path));
 
   if (collapsed) {
     return (
@@ -35,8 +44,17 @@ export function RepoSidebar() {
           <PanelLeftOpen className="size-4" aria-hidden />
         </button>
         <div className="mt-1 flex flex-col items-center gap-eg-2 text-ink-tertiary">
-          <Star className="size-4" aria-hidden />
-          <Clock className="size-4" aria-hidden />
+          {favoriteRepos.slice(0, 3).map((repo) => (
+            <button
+              key={repo.path}
+              type="button"
+              title={repo.name}
+              onClick={() => void openByPath(repo.path)}
+              className="flex size-8 items-center justify-center rounded-md hover:bg-surface-2"
+            >
+              <FolderGit2 className="size-4" aria-hidden />
+            </button>
+          ))}
         </div>
       </aside>
     );
@@ -66,22 +84,49 @@ export function RepoSidebar() {
           icon={<Star className="size-3.5" aria-hidden />}
           label={t('sidebar.favorites')}
         >
-          {t('sidebar.empty.favorites')}
+          {favoriteRepos.length > 0 ? (
+            favoriteRepos.map((repo) => (
+              <RepoItem
+                key={repo.path}
+                name={repo.name}
+                path={repo.path}
+                starred
+                onOpen={() => void openByPath(repo.path)}
+                onToggleStar={() => toggleFavorite(repo.path)}
+              />
+            ))
+          ) : (
+            <SectionHint text={t('sidebar.empty.favorites')} />
+          )}
         </SidebarSection>
+
         <SidebarSection
           icon={<Clock className="size-3.5" aria-hidden />}
           label={t('sidebar.recent')}
         >
-          {t('sidebar.empty.recent')}
+          {recents.length > 0 ? (
+            recents.map((repo) => (
+              <RepoItem
+                key={repo.path}
+                name={repo.name}
+                path={repo.path}
+                starred={favorites.includes(repo.path)}
+                onOpen={() => void openByPath(repo.path)}
+                onToggleStar={() => toggleFavorite(repo.path)}
+              />
+            ))
+          ) : (
+            <SectionHint text={t('sidebar.empty.recent')} />
+          )}
         </SidebarSection>
       </div>
 
-      {/* Repo creation entries — functional in W2 (F-06). */}
+      {/* Repo creation entries; clone arrives with R-04 (TaskHandle progress). */}
       <div className="shrink-0 border-t border-hairline p-eg-2">
         <button
           type="button"
-          disabled
-          className="flex w-full items-center gap-eg-2 rounded-md px-eg-2 py-1.5 text-secondary text-ink-muted hover:bg-surface-2 disabled:pointer-events-none disabled:opacity-40"
+          onClick={() => void pickAndInit()}
+          className="flex w-full items-center gap-eg-2 rounded-md px-eg-2 py-1.5 text-secondary text-ink-muted hover:bg-surface-2 hover:text-ink"
         >
           <FolderPlus className="size-4" aria-hidden />
           {t('sidebar.newRepo')}
@@ -89,7 +134,8 @@ export function RepoSidebar() {
         <button
           type="button"
           disabled
-          className="flex w-full items-center gap-eg-2 rounded-md px-eg-2 py-1.5 text-secondary text-ink-muted hover:bg-surface-2 disabled:pointer-events-none disabled:opacity-40"
+          title="克隆仓库将在后续版本提供（含进度与取消）"
+          className="flex w-full items-center gap-eg-2 rounded-md px-eg-2 py-1.5 text-secondary text-ink-muted disabled:pointer-events-none disabled:opacity-40"
         >
           <FolderGit2 className="size-4" aria-hidden />
           {t('sidebar.cloneRepo')}
@@ -99,14 +145,54 @@ export function RepoSidebar() {
   );
 }
 
+function RepoItem({
+  name,
+  path,
+  starred = false,
+  onOpen,
+  onToggleStar,
+}: {
+  name: string;
+  path: string;
+  starred?: boolean;
+  onOpen: () => void;
+  onToggleStar: () => void;
+}) {
+  return (
+    <div className="group flex items-center rounded-md hover:bg-surface-2">
+      <button
+        type="button"
+        onClick={onOpen}
+        title={path}
+        className="flex min-w-0 flex-1 items-center gap-eg-2 px-eg-2 py-1.5 text-left"
+      >
+        <FolderGit2 className="size-3.5 shrink-0 text-ink-tertiary" aria-hidden />
+        <span className="truncate text-secondary text-ink-muted">{name}</span>
+      </button>
+      <button
+        type="button"
+        onClick={onToggleStar}
+        aria-label={t('sidebar.favorites')}
+        title={starred ? '取消收藏' : '收藏'}
+        data-testid={`star-${name}`}
+        className={`mr-1 flex size-6 shrink-0 items-center justify-center rounded-md ${
+          starred ? 'text-primary' : 'text-ink-tertiary opacity-0 group-hover:opacity-100'
+        } hover:bg-surface-3`}
+      >
+        <Star className="size-3.5" fill={starred ? 'currentColor' : 'none'} aria-hidden />
+      </button>
+    </div>
+  );
+}
+
 function SidebarSection({
   icon,
   label,
   children,
 }: {
-  icon: React.ReactNode;
+  icon: ReactNode;
   label: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <section>
@@ -114,10 +200,16 @@ function SidebarSection({
         {icon}
         {label}
       </div>
-      <div className="flex items-center gap-1.5 px-eg-2 py-1 text-caption text-ink-tertiary">
-        <ChevronRight className="size-3" aria-hidden />
-        {children}
-      </div>
+      <div className="flex flex-col">{children}</div>
     </section>
+  );
+}
+
+function SectionHint({ text }: { text: string }) {
+  return (
+    <div className="flex items-center gap-1.5 px-eg-2 py-1 text-caption text-ink-tertiary">
+      <ChevronRight className="size-3" aria-hidden />
+      {text}
+    </div>
   );
 }

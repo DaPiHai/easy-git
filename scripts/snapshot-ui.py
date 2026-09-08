@@ -20,42 +20,92 @@ from gi.repository import GLib, Gtk, WebKit2  # noqa: E402
 WIDTH, HEIGHT = 1280, 800
 
 # (action_js_or_None, output_name) — actions are wrapped in an IIFE because
-# WebKit evaluates every script in the same global scope.
+# WebKit evaluates every script in the same global scope. Mock IPC payloads
+# are injected as JSON through the dev-only window.__eg store handle.
+
+import json
+
+SUMMARY_R1 = {
+    "repoId": "r1",
+    "path": "/home/hhdlj/easy-git",
+    "name": "easy-git",
+    "branch": "main",
+    "headOid": "e1b2c3d4f5a6",
+    "ahead": 2,
+    "behind": 0,
+    "isEmpty": False,
+}
+
+STATUS_R1 = {
+    "repoId": "r1",
+    "branch": "main",
+    "headOid": "e1b2c3d4f5a6",
+    "conflicted": [{"path": "src/merge-me.txt", "oldPath": None, "kind": "conflicted"}],
+    "staged": [{"path": "src/app.ts", "oldPath": None, "kind": "added"}],
+    "unstaged": [
+        {"path": "src/dag.ts", "oldPath": None, "kind": "modified"},
+        {"path": "assets/icons/", "oldPath": None, "kind": "untracked"},
+    ],
+}
+
+RECENTS = [
+    {"path": "/home/hhdlj/easy-git", "name": "easy-git"},
+    {"path": "/opt/projects/website", "name": "website"},
+]
+
 STATES = [
-    (None, "01-dark-changes.png"),
-    ('(() => document.querySelector(\'[data-testid="theme-light"]\').click())()', "02-light-changes.png"),
-    ('(() => document.querySelector(\'[data-testid="theme-dark"]\').click())()', None),
+    (None, "08-wizard.png"),
+    (f"""
+      (() => {{
+        window.__eg.repoStore.getState().seed({{
+          recents: {json.dumps(RECENTS)},
+        }});
+      }})()
+    """, "09-wizard-recents.png"),
+    (f"""
+      (() => {{
+        window.__eg.repoStore.setState({{
+          repos: {{ r1: {json.dumps(SUMMARY_R1)} }},
+          activeId: 'r1',
+          status: {json.dumps(STATUS_R1)},
+        }});
+      }})()
+    """, "10-dark-changes-zones.png"),
     ("""
       (() => {
-        const tabs = [...document.querySelectorAll('nav[aria-label="主导航"] button')];
-        tabs.find(b => b.textContent.trim() === '历史').click();
+        const repoStore = window.__eg.repoStore;
+        const s = repoStore.getState();
+        repoStore.setState({
+          selectedChange: s.status.unstaged[0],
+          favorites: ['/home/hhdlj/easy-git'],
+        });
       })()
-    """, "03-dark-history.png"),
+    """, "11-dark-changes-selected.png"),
     ("""
       (() => {
-        const tabs = [...document.querySelectorAll('nav[aria-label="主导航"] button')];
-        tabs.find(b => b.textContent.trim() === '分支').click();
-      })()
-    """, "04-dark-branches.png"),
-    ("""
-      (() => {
-        const tabs = [...document.querySelectorAll('nav[aria-label="主导航"] button')];
-        tabs.find(b => b.textContent.trim() === '储藏').click();
-      })()
-    """, "05-dark-storage.png"),
-    ("""
-      (() => {
-        const tabs = [...document.querySelectorAll('nav[aria-label="主导航"] button')];
-        tabs.find(b => b.textContent.trim() === '变更').click();
-        document.querySelector('[data-testid="sidebar-collapse"]').click();
-      })()
-    """, "06-dark-sidebar-rail.png"),
-    ("""
-      (() => {
-        document.querySelector('[data-testid="sidebar-expand"]').click();
         document.querySelector('[data-testid="detail-toggle"]').click();
+        window.__eg.uiStore.getState().setView('history');
       })()
-    """, "07-dark-detail-hidden.png"),
+    """, "12-dark-history.png"),
+    ("""
+      (() => {
+        window.__eg.uiStore.getState().setView('changes');
+        window.__eg.uiStore.getState().setSwitcherOpen(true);
+      })()
+    """, "13-dark-quick-switcher.png"),
+    ("""
+      (() => {
+        window.__eg.uiStore.getState().setSwitcherOpen(false);
+        document.querySelector('[data-testid="theme-light"]').click();
+      })()
+    """, "14-light-changes-zones.png"),
+    ("""
+      (() => {
+        const repoStore = window.__eg.repoStore;
+        repoStore.setState({ status: null, selectedChange: null });
+        document.querySelector('[data-testid="theme-dark"]').click();
+      })()
+    """, "15-dark-changes-clean.png"),
 ]
 
 

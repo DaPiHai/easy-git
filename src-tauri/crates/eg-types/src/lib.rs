@@ -8,7 +8,7 @@ pub use error::EgError;
 
 mod dto;
 
-pub use dto::AppVersion;
+pub use dto::{AppVersion, ChangeEntry, ChangeKind, RepoId, RepoSummary, StatusReport};
 
 #[cfg(test)]
 mod tests {

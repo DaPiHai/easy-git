@@ -1,7 +1,10 @@
 import { PanelRightClose } from 'lucide-react';
 import { useRef } from 'react';
+import { Badge } from '../../components';
 import { t } from '../../lib/i18n';
 import { clampDetailWidth, useUiStore, DETAIL_DEFAULT_WIDTH } from '../../stores/uiStore';
+import { useRepoStore } from '../../stores/repoStore';
+import { KIND_META } from '../changes/kind';
 
 /**
  * Detail panel (UI doc §5.1): 360px default, draggable 280–480, collapsible.
@@ -67,15 +70,49 @@ export function DetailPanel() {
           <PanelRightClose className="size-4" aria-hidden />
         </button>
       </div>
-      <div
-        className="flex min-h-0 flex-1 items-center justify-center px-eg-5 text-center"
-        data-testid="detail-empty"
-      >
-        <div>
-          <div className="text-secondary text-ink-subtle">{t('detail.empty.title')}</div>
-          <p className="mt-1 max-w-64 text-caption text-ink-tertiary">{t('detail.empty.desc')}</p>
-        </div>
-      </div>
+      <DetailContent />
     </aside>
+  );
+}
+
+/** Context-driven content (PRD §6.1): selected change now; diff W6, commits W5. */
+function DetailContent() {
+  const selectedChange = useRepoStore((s) => s.selectedChange);
+
+  if (selectedChange) {
+    const meta = KIND_META[selectedChange.kind];
+    const Icon = meta.icon;
+    return (
+      <div
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto px-eg-4 py-eg-2"
+        data-testid="detail-change"
+      >
+        <div className="flex items-center gap-eg-2">
+          <Icon className={`size-4 ${meta.iconClass}`} aria-hidden />
+          <span className="truncate font-mono text-secondary text-ink">{selectedChange.path}</span>
+        </div>
+        <div className="mt-eg-2 flex items-center gap-eg-2">
+          <Badge variant={meta.badgeVariant}>{t(meta.labelKey)}</Badge>
+        </div>
+        {selectedChange.oldPath ? (
+          <div className="mt-eg-2 font-mono text-caption text-ink-tertiary">
+            {t('changes.detail.oldPath')}: {selectedChange.oldPath}
+          </div>
+        ) : null}
+        <p className="mt-eg-4 text-caption text-ink-tertiary">{t('changes.detail.note')}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="flex min-h-0 flex-1 items-center justify-center px-eg-5 text-center"
+      data-testid="detail-empty"
+    >
+      <div>
+        <div className="text-secondary text-ink-subtle">{t('detail.empty.title')}</div>
+        <p className="mt-1 max-w-64 text-caption text-ink-tertiary">{t('detail.empty.desc')}</p>
+      </div>
+    </div>
   );
 }

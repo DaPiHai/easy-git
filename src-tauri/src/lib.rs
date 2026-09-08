@@ -1,10 +1,13 @@
 pub mod commands;
+pub mod events;
 
+use eg_git_core::RepoManager;
 use specta_typescript::Typescript;
-use tauri_specta::{collect_commands, Builder, ErrorHandlingMode};
+use tauri::{Manager, RunEvent};
+use tauri_specta::{collect_commands, collect_events, Builder, ErrorHandlingMode};
 
 /// App entry point. The Tauri window, the IPC command registry and the
-/// tauri-specta type pipeline are wired here (m1-plan F-01).
+/// tauri-specta type pipeline are wired here.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Local-only logging (TDD §7): no telemetry, file sink arrives with W2.
@@ -16,7 +19,14 @@ pub fn run() {
         .init();
 
     let builder = Builder::<tauri::Wry>::new()
-        .commands(collect_commands![commands::app_version,])
+        .commands(collect_commands![
+            commands::app_version,
+            commands::repo_open,
+            commands::repo_init,
+            commands::repo_close,
+            commands::status_get,
+        ])
+        .events(collect_events![events::RepoChanged])
         .error_handling(ErrorHandlingMode::Result);
 
     // Regenerate TS bindings on every debug launch so they can never drift.
@@ -29,11 +39,19 @@ pub fn run() {
         .expect("failed to export tauri-specta bindings");
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .manage(RepoManager::default())
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {
             builder.mount_events(app);
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running EasyGit");
+        .build(tauri::generate_context!())
+        .expect("error while building EasyGit")
+        .run(|app_handle, event| {
+            if let RunEvent::Exit = event {
+                // Drain and stop every repo worker thread.
+                app_handle.state::<RepoManager>().close_all();
+            }
+        });
 }

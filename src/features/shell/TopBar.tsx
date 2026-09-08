@@ -1,15 +1,9 @@
-import {
-  ArrowDownToLine,
-  ArrowUpToLine,
-  ChevronDown,
-  CloudDownload,
-  PanelRight,
-  Search,
-} from 'lucide-react';
+import { ArrowDownToLine, ArrowUpToLine, CloudDownload, PanelRight, Search } from 'lucide-react';
 import { t } from '../../lib/i18n';
 import { useUiStore, type MainView } from '../../stores/uiStore';
 import { Button } from '../../components/Button';
 import { ThemeToggle } from './ThemeToggle';
+import { RepoSwitcher } from '../repo/RepoSwitcher';
 
 const mainViews: { id: MainView; labelKey: Parameters<typeof t>[0] }[] = [
   { id: 'changes', labelKey: 'tab.changes' },
@@ -20,7 +14,7 @@ const mainViews: { id: MainView; labelKey: Parameters<typeof t>[0] }[] = [
 
 /**
  * 44px top bar (UI doc §5.1): repo switcher · main view tabs · sync group + search.
- * Repo-bound controls stay disabled until a repository is opened (W2).
+ * Sync actions stay disabled until remotes land (W9).
  */
 export function TopBar() {
   const view = useUiStore((s) => s.view);
@@ -33,13 +27,7 @@ export function TopBar() {
       className="flex shrink-0 items-center gap-eg-3 border-b border-hairline bg-canvas px-eg-3"
       style={{ height: 'var(--eg-topbar-h)' }}
     >
-      {/* Repo switcher placeholder — functional in W2 (F-05). */}
-      <Button variant="tertiary" size="sm" disabled data-testid="repo-switcher">
-        <span className="font-medium">{t('app.title')}</span>
-        <span className="text-ink-subtle">·</span>
-        <span>{t('topbar.openRepo')}</span>
-        <ChevronDown className="size-3.5 text-ink-tertiary" aria-hidden />
-      </Button>
+      <RepoSwitcher />
 
       {/* Main view tabs (UI doc §6.3). */}
       <nav className="mx-auto flex items-center gap-1" aria-label="主导航">

@@ -1,14 +1,22 @@
 //! Regenerates `src/lib/ipc/bindings.ts` without launching the GUI.
 //! CI runs this before typecheck so committed bindings can never drift:
-//! `cargo run --bin generate-bindings` (m1-plan F-01).
+//! `cargo run --bin generate-bindings`. The command/event registry MUST stay
+//! in sync with `run()` in lib.rs.
 //!
-//! `run()` in lib.rs re-exports the same bindings on every debug launch.
+//! `run()` re-exports the same bindings on every debug launch.
 use specta_typescript::Typescript;
-use tauri_specta::{collect_commands, Builder, ErrorHandlingMode};
+use tauri_specta::{collect_commands, collect_events, Builder, ErrorHandlingMode};
 
 fn main() {
     let builder = Builder::<tauri::Wry>::new()
-        .commands(collect_commands![easy_git::commands::app_version,])
+        .commands(collect_commands![
+            easy_git::commands::app_version,
+            easy_git::commands::repo_open,
+            easy_git::commands::repo_init,
+            easy_git::commands::repo_close,
+            easy_git::commands::status_get,
+        ])
+        .events(collect_events![easy_git::events::RepoChanged])
         .error_handling(ErrorHandlingMode::Result);
 
     builder
