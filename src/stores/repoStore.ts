@@ -152,10 +152,16 @@ export const useRepoStore = create<RepoState>()((set, get) => {
     set({ recents });
   };
 
-  const refreshActiveStatus = async () => {
+  /**
+   * Refreshes the active repo's status. The indeterminate loading bar only
+   * shows for a FIRST load (no status yet) or an explicit user refresh —
+   * fs-watch background refreshes must stay silent, otherwise the bar
+   * flickers on every file touch.
+   */
+  const refreshActiveStatus = async (showLoading = false) => {
     const { activeId } = get();
     if (!activeId) return;
-    set({ statusLoading: true });
+    if (showLoading || !get().status) set({ statusLoading: true });
     try {
       const status = await getStatus(activeId);
       if (get().activeId === activeId) set({ status });
@@ -261,7 +267,7 @@ export const useRepoStore = create<RepoState>()((set, get) => {
       if (activeId) await get().activate(activeId);
     },
 
-    refreshStatus: refreshActiveStatus,
+    refreshStatus: () => refreshActiveStatus(true),
 
     toggleFavorite: (path) => {
       const favorites = get().favorites.includes(path)

@@ -3,16 +3,18 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { OpenRepoWizard } from './OpenRepoWizard';
 import { useRepoStore } from '../../stores/repoStore';
+import { useUiStore } from '../../stores/uiStore';
 
 beforeEach(() => {
   useRepoStore.getState().seed({
     recents: [],
     error: null,
   });
+  useUiStore.setState({ cloneDialogOpen: false });
 });
 
 describe('OpenRepoWizard', () => {
-  it('renders the three entries; clone opens the live 克隆 dialog (W9)', async () => {
+  it('renders the three entries; clone card raises the global 克隆 dialog (W9)', async () => {
     const user = userEvent.setup();
     render(<OpenRepoWizard />);
     expect(screen.getByText('打开本地仓库')).toBeInTheDocument();
@@ -20,8 +22,8 @@ describe('OpenRepoWizard', () => {
     const clone = screen.getByTestId('wizard-clone');
     expect(clone).toBeEnabled();
     await user.click(clone);
-    expect(screen.getByTestId('clone-url-input')).toBeInTheDocument();
-    expect(screen.getByTestId('clone-path-input')).toBeInTheDocument();
+    // The dialog itself is mounted at AppShell level (sidebar can open it too).
+    expect(useUiStore.getState().cloneDialogOpen).toBe(true);
   });
 
   it('lists recent repositories for one-click opening', async () => {

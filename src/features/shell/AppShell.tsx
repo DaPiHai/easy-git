@@ -9,6 +9,7 @@ import { RepoSidebar } from './RepoSidebar';
 import { QuickSwitcher } from '../palette/QuickSwitcher';
 import { TopBar } from './TopBar';
 import { OpenRepoWizard } from '../repo/OpenRepoWizard';
+import { CloneDialog } from '../repo/CloneDialog';
 import { ConflictWizard } from '../conflicts/ConflictWizard';
 import { useMergeStore } from '../../stores/mergeStore';
 import { useSyncStore } from '../../stores/syncStore';
@@ -86,6 +87,7 @@ export function AppShell() {
       </div>
       <BottomBar />
       <QuickSwitcher />
+      <CloneDialog />
       <ToastHost />
     </div>
   );

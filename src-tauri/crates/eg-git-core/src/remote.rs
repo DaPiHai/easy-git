@@ -6,6 +6,15 @@
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
+use std::time::Duration;
+
+/// Wall-clock budgets for CLI commands (PRD §4.2 timeout handling). Big
+/// fetches are legitimate, so long-running ops get a generous ceiling; only
+/// a wedged process (e.g. a stalled network) ever hits it.
+const CLI_TIMEOUT_QUICK: Duration = Duration::from_secs(45);
+const CLI_TIMEOUT_NETWORK: Duration = Duration::from_secs(300);
+const CLI_TIMEOUT_CLONE: Duration = Duration::from_secs(600);
+const CLI_TIMEOUT_LOCAL: Duration = Duration::from_secs(900);
 
 use eg_types::{EgError, RemoteInfo, SyncStrategy};
 use git2::Repository;
@@ -99,11 +108,14 @@ impl GitCli {
         }
     }
 
-    /// Returns (stderr+stdout text, success flag).
+    /// Returns (stderr+stdout text, success flag). A wedged git process is
+    /// killed after `timeout` (PRD §4.2: all CLI calls get timeout handling)
+    /// so the sync buttons can never stay greyed forever.
     fn run(
         &self,
         args: &[&str],
         on_progress: Option<&Sender<SyncProgress>>,
+        timeout: Duration,
     ) -> Result<(String, bool), EgError> {
         let mut child = std::process::Command::new("git")
             .arg("-C")
@@ -133,6 +145,35 @@ impl GitCli {
                 collected
             })
         });
+
+        let started = std::time::Instant::now();
+        let status = loop {
+            match child.try_wait() {
+                Ok(Some(status)) => break status,
+                Ok(None) => {
+                    if started.elapsed() >= timeout {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        let text = reader
+                            .map(|h| h.join().unwrap_or_default())
+                            .unwrap_or_default();
+                        return Err(EgError::Internal {
+                            context: format!(
+                                "git {} timed out (exceeded {} seconds), the process has been terminated\n{text}",
+                                args.join(" "),
+                                timeout.as_secs()
+                            ),
+                        });
+                    }
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                Err(e) => {
+                    return Err(EgError::Internal {
+                        context: format!("git wait failed: {e}"),
+                    })
+                }
+            }
+        };
         let output = child.wait_with_output().map_err(|e| EgError::Internal {
             context: format!("git wait failed: {e}"),
         })?;
@@ -149,7 +190,7 @@ impl GitCli {
             text.push_str(line);
             text.push('\n');
         }
-        Ok((text, output.status.success()))
+        Ok((text, status.success()))
     }
 
     /// Runs a network command, humanizing auth/network failures (TDD §6).
@@ -157,8 +198,9 @@ impl GitCli {
         &self,
         args: &[&str],
         on_progress: Option<&Sender<SyncProgress>>,
+        timeout: Duration,
     ) -> Result<(), EgError> {
-        let (stderr, ok) = self.run(args, on_progress)?;
+        let (stderr, ok) = self.run(args, on_progress, timeout)?;
         if ok {
             return Ok(());
         }
@@ -170,7 +212,11 @@ impl GitCli {
     /// proved unreliable on git 2.53, and on an already-packed repo gc is a
     /// cheap no-op. Inline (no detach) so the worker never races itself.
     pub fn maintenance(&self) -> Result<(), EgError> {
-        let (text, ok) = self.run(&["-c", "gc.autoDetach=false", "gc", "--quiet"], None)?;
+        let (text, ok) = self.run(
+            &["-c", "gc.autoDetach=false", "gc", "--quiet"],
+            None,
+            CLI_TIMEOUT_LOCAL,
+        )?;
         if !ok {
             return Err(EgError::Internal {
                 context: format!("git gc failed: {text}"),
@@ -185,7 +231,7 @@ impl GitCli {
         remote: &str,
         on_progress: Option<&Sender<SyncProgress>>,
     ) -> Result<Vec<(String, String)>, EgError> {
-        let (stderr, ok) = self.run(&["ls-remote", remote], on_progress)?;
+        let (stderr, ok) = self.run(&["ls-remote", remote], on_progress, CLI_TIMEOUT_QUICK)?;
         if !ok {
             return Err(humanize_network(&stderr));
         }
@@ -217,7 +263,7 @@ impl GitCli {
         }
         args.push(remote.to_string());
         let argrefs: Vec<&str> = args.iter().map(String::as_str).collect();
-        self.run_network(&argrefs, on_progress)
+        self.run_network(&argrefs, on_progress, CLI_TIMEOUT_NETWORK)
     }
 
     /// `git push [--force] [-u] <remote> <branch>` (R-22). `--tags` pushes
@@ -240,7 +286,7 @@ impl GitCli {
         args.push(remote.to_string());
         args.push(format!("{branch}:{branch}"));
         let argrefs: Vec<&str> = args.iter().map(String::as_str).collect();
-        self.run_network(&argrefs, on_progress)
+        self.run_network(&argrefs, on_progress, CLI_TIMEOUT_NETWORK)
     }
 
     /// `git clone --progress <url> <path>` (W2 顺延 F-06 clone 入口).
@@ -269,7 +315,7 @@ impl GitCli {
             path.display().to_string(),
         ];
         let argrefs: Vec<&str> = child_args.iter().map(String::as_str).collect();
-        let (stderr, ok) = self.run(&argrefs, on_progress)?;
+        let (stderr, ok) = self.run(&argrefs, on_progress, CLI_TIMEOUT_CLONE)?;
         if Repository::open(path).is_ok() && ok {
             Ok(())
         } else {
@@ -288,7 +334,7 @@ impl GitCli {
             format!("{oid}:{remote_ref}"),
         ];
         let argrefs: Vec<&str> = args.iter().map(String::as_str).collect();
-        self.run_network(&argrefs, None)
+        self.run_network(&argrefs, None, CLI_TIMEOUT_NETWORK)
     }
 }
 

@@ -67,6 +67,10 @@ interface UiState {
   switcherOpen: boolean;
   setSwitcherOpen: (open: boolean) => void;
 
+  /** 克隆仓库 dialog (R-22): reachable from the wizard card and the sidebar. */
+  cloneDialogOpen: boolean;
+  setCloneDialogOpen: (open: boolean) => void;
+
   /** Populated via IPC once the Tauri shell is up; null in browser previews. */
   appVersion: AppVersionInfo | null;
   fetchAppVersion: () => Promise<void>;
@@ -139,6 +143,9 @@ export const useUiStore = create<UiState>()((set, get) => {
 
     switcherOpen: false,
     setSwitcherOpen: (open) => set({ switcherOpen: open }),
+
+    cloneDialogOpen: false,
+    setCloneDialogOpen: (open) => set({ cloneDialogOpen: open }),
 
     appVersion: null,
     fetchAppVersion: async () => {

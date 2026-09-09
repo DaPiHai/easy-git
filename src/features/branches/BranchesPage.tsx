@@ -155,7 +155,7 @@ function BranchRow({
               </span>
             )}
             <span
-              className={`truncate font-mono text-secondary ${
+              className={`min-w-0 truncate font-mono text-secondary ${
                 branch.isCurrent ? 'font-semibold text-primary' : 'text-ink'
               }`}
             >

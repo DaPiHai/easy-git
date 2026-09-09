@@ -1,11 +1,8 @@
 import { FolderGit2, FolderOpen, FolderPlus } from 'lucide-react';
-import { useState } from 'react';
-import { Button, Dialog } from '../../components';
+import { Button } from '../../components';
 import { t } from '../../lib/i18n';
-import { cloneRepo, pickDirectory } from '../../lib/ipc/commands';
 import { useRepoStore } from '../../stores/repoStore';
-import { useSyncStore } from '../../stores/syncStore';
-import { toast } from '../../stores/toastStore';
+import { useUiStore } from '../../stores/uiStore';
 
 /**
  * First-run wizard (m1-plan F-06, PRD §6.1 首页三入口): open / init / clone.
@@ -18,7 +15,6 @@ export function OpenRepoWizard() {
   const recents = useRepoStore((s) => s.recents);
   const error = useRepoStore((s) => s.error);
   const dismissError = useRepoStore((s) => s.dismissError);
-  const [cloneOpen, setCloneOpen] = useState(false);
 
   return (
     <div
@@ -50,19 +46,10 @@ export function OpenRepoWizard() {
             icon={FolderGit2}
             title={t('wizard.clone')}
             description={t('wizard.clone.desc')}
-            onClick={() => setCloneOpen(true)}
+            onClick={() => useUiStore.getState().setCloneDialogOpen(true)}
             testId="wizard-clone"
           />
         </div>
-
-        <CloneDialog
-          open={cloneOpen}
-          onClose={() => setCloneOpen(false)}
-          onDone={(summary) => {
-            setCloneOpen(false);
-            void openByPath(summary.path);
-          }}
-        />
 
         {error ? (
           <div
@@ -142,94 +129,5 @@ function WizardCard({
       <span className="text-section font-semibold text-ink">{title}</span>
       <span className="text-caption text-ink-subtle">{description}</span>
     </button>
-  );
-}
-
-/** 克隆对话框 (W2 顺延 + m1-plan R-22): url + 目标目录, 进度走 sync 任务条. */
-function CloneDialog({
-  open,
-  onClose,
-  onDone,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onDone: (summary: { path: string }) => void;
-}) {
-  const [url, setUrl] = useState('');
-  const [target, setTarget] = useState('');
-  const [busy, setBusy] = useState(false);
-  const progress = useSyncStore((s) => s.progress);
-
-  const valid = url.trim().length > 0 && target.trim().length > 0 && !busy;
-
-  const submit = async () => {
-    if (!valid) return;
-    setBusy(true);
-    try {
-      const summary = await cloneRepo(url.trim(), target.trim());
-      toast.success(t('wizard.clone.done', { name: summary.name }));
-      onDone(summary);
-    } catch (error) {
-      const raw = error as { title?: string; detail?: string };
-      toast.error(raw.title ?? t('wizard.clone.failed'), raw.detail);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Dialog
-      open={open}
-      title={t('wizard.clone')}
-      onClose={onClose}
-      actions={
-        <>
-          <Button variant="secondary" onClick={onClose}>
-            {t('dialog.cancel')}
-          </Button>
-          <Button
-            variant="primary"
-            disabled={!valid}
-            data-testid="clone-confirm"
-            onClick={() => void submit()}
-          >
-            {busy ? t('wizard.clone.running') : t('wizard.clone.confirm')}
-          </Button>
-        </>
-      }
-    >
-      <input
-        value={url}
-        onChange={(e) => setUrl(e.target.value)}
-        placeholder={t('wizard.clone.urlPlaceholder')}
-        aria-label={t('wizard.clone.urlPlaceholder')}
-        data-testid="clone-url-input"
-        className="mb-2 h-8 w-full rounded-md border border-hairline-strong bg-surface-2 px-eg-2 text-secondary text-ink outline-none placeholder:text-ink-tertiary focus:border-primary"
-      />
-      <div className="flex gap-2">
-        <input
-          value={target}
-          onChange={(e) => setTarget(e.target.value)}
-          placeholder={t('wizard.clone.pathPlaceholder')}
-          aria-label={t('wizard.clone.pathPlaceholder')}
-          data-testid="clone-path-input"
-          className="h-8 flex-1 rounded-md border border-hairline-strong bg-surface-2 px-eg-2 text-secondary text-ink outline-none placeholder:text-ink-tertiary focus:border-primary"
-        />
-        <Button
-          variant="secondary"
-          onClick={async () => {
-            const dir = await pickDirectory(t('wizard.clone.pathPlaceholder'));
-            if (dir) setTarget(dir);
-          }}
-        >
-          …
-        </Button>
-      </div>
-      {busy && progress ? (
-        <p className="mt-2 truncate text-caption text-ink-subtle" data-testid="clone-progress">
-          {progress.message}
-        </p>
-      ) : null}
-    </Dialog>
   );
 }

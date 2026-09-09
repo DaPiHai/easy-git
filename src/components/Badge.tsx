@@ -28,7 +28,7 @@ export function Badge({ variant = 'neutral', children, className = '' }: BadgePr
         : semanticClasses[variant];
   return (
     <span
-      className={`inline-flex items-center rounded-pill px-2 py-0.5 text-caption leading-none ${classes} ${className}`}
+      className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-pill px-2 py-0.5 text-caption leading-none ${classes} ${className}`}
     >
       {children}
     </span>

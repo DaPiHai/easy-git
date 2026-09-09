@@ -133,9 +133,9 @@ export function RepoSidebar() {
         </button>
         <button
           type="button"
-          disabled
-          title="克隆仓库将在后续版本提供（含进度与取消）"
-          className="flex w-full items-center gap-eg-2 rounded-md px-eg-2 py-1.5 text-secondary text-ink-muted disabled:pointer-events-none disabled:opacity-40"
+          data-testid="sidebar-clone"
+          onClick={() => useUiStore.getState().setCloneDialogOpen(true)}
+          className="flex w-full items-center gap-eg-2 rounded-md px-eg-2 py-1.5 text-secondary text-ink-muted hover:bg-surface-2 hover:text-ink"
         >
           <FolderGit2 className="size-4" aria-hidden />
           {t('sidebar.cloneRepo')}
