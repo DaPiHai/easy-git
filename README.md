@@ -27,7 +27,7 @@ Tauri 2 · Rust（git2-rs + git CLI 混合） · React 18 · TypeScript · Tailw
 
 ## 路线图
 
-- **M1 — 本地仓库全流程（进行中）**：多仓库、三区暂存、提交、DAG 历史、分支/标签/储藏、合并与冲突向导、推送拉取、撤销系统
+- **M1 — 本地仓库全流程（RC：`0.1.0-rc.1`）**：多仓库、三区暂存、提交、DAG 历史、分支/标签/储藏、合并与冲突向导、推送拉取、撤销系统、远程管理、操作时间线、自动维护、快捷键 v1
 - **M2 — 远程协作与平台集成**：变基/摘取、GitHub/GitLab/Gitee 账号与 PR/MR、命令面板
 - **M3 — 进阶与打磨**：交互式变基、二分定位、子模块/工作树、大仓库性能达标、多语言
 
@@ -40,10 +40,13 @@ Tauri 2 · Rust（git2-rs + git CLI 混合） · React 18 · TypeScript · Tailw
 ```bash
 pnpm install
 pnpm tauri dev    # 开发模式
-pnpm tauri build  # 出包
+pnpm tauri build  # 出包（Linux 产出 deb + AppImage）
 ```
 
 详见 [CONTRIBUTING.md](./CONTRIBUTING.md)。
+
+> 安装包未做代码签名：Windows 首次运行如遇 SmartScreen / macOS 遇 Gatekeeper 提示，
+> 选择「仍要运行」或在「系统设置 → 隐私与安全性」中放行即可（该决策见 PRD §10.5，待定项）。
 
 ## License
 

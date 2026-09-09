@@ -8,6 +8,7 @@ import { useRepoStore } from '../../stores/repoStore';
 import { toast } from '../../stores/toastStore';
 import type { ChangeEntry, StageMode, StatusReport } from '../../lib/ipc/commands';
 import { KIND_META, splitPath } from './kind';
+import { ConceptCards } from './ConceptCards';
 
 function isClean(status: StatusReport): boolean {
   return (
@@ -70,6 +71,7 @@ export function ChangesPage() {
   return (
     <div className="relative h-full overflow-y-auto" data-testid="changes-view">
       {statusLoading ? <LoadingBar /> : null}
+      <ConceptCards />
       {isClean(status) ? (
         <EmptyState
           icon={CheckCircle2}

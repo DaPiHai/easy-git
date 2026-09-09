@@ -165,6 +165,20 @@ impl GitCli {
         Err(humanize_network(&stderr))
     }
 
+    /// Silent idle maintenance (PRD §5.11): full inline `git gc --quiet`
+    /// (covers repack, prune and pack-refs). `--auto`'s sampled threshold
+    /// proved unreliable on git 2.53, and on an already-packed repo gc is a
+    /// cheap no-op. Inline (no detach) so the worker never races itself.
+    pub fn maintenance(&self) -> Result<(), EgError> {
+        let (text, ok) = self.run(&["-c", "gc.autoDetach=false", "gc", "--quiet"], None)?;
+        if !ok {
+            return Err(EgError::Internal {
+                context: format!("git gc failed: {text}"),
+            });
+        }
+        Ok(())
+    }
+
     /// `git ls-remote` — the connectivity test (R-24). Returns remote refs.
     pub fn ls_remote(
         &self,

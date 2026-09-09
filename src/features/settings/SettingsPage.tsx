@@ -1,6 +1,7 @@
 import { Check, Save, UserRound } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { t } from '../../lib/i18n';
+import { SHORTCUTS } from '../../lib/shortcuts';
 import { useRepoStore } from '../../stores/repoStore';
 import { useUiStore } from '../../stores/uiStore';
 import { toast } from '../../stores/toastStore';
@@ -17,6 +18,7 @@ export function SettingsPage() {
         <h1 className="text-title font-semibold text-ink">{t('settings.title')}</h1>
         <IdentitySection />
         <AppearanceSection />
+        <ShortcutsSection />
       </div>
     </div>
   );
@@ -124,6 +126,27 @@ function IdentitySection() {
           {t('settings.identity.save')}
         </button>
       </div>
+    </SectionCard>
+  );
+}
+
+/** Shortcut cheat sheet (m1-plan X-03): bindings live in lib/shortcuts.ts. */
+function ShortcutsSection() {
+  return (
+    <SectionCard title={t('settings.shortcuts')} testId="settings-shortcuts">
+      <dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-eg-4 gap-y-1.5">
+        {SHORTCUTS.map((s) => (
+          <div
+            key={s.id}
+            className="col-span-2 grid grid-cols-[auto_1fr] items-baseline gap-x-eg-4"
+          >
+            <dt className="min-w-24 rounded-md border border-hairline bg-surface-2 px-1.5 py-0.5 text-center font-mono text-mono text-ink-muted">
+              {s.keys}
+            </dt>
+            <dd className="text-secondary text-ink-muted">{t(s.actionKey)}</dd>
+          </div>
+        ))}
+      </dl>
     </SectionCard>
   );
 }

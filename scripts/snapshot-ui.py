@@ -587,6 +587,24 @@ STATES = [
         window.__eg.uiStore.getState().setView('remotes');
       })()
     """, "57-light-remotes.png"),
+    # ---- W10: shortcuts cheat sheet (X-03) / concept cards (F-11, X-04) ----
+    ("""
+      (() => {
+        document.querySelector('[data-testid="theme-dark"]').click();
+        window.__eg.uiStore.getState().setView('settings');
+      })()
+    """, "58-dark-shortcuts.png"),
+    ("""
+      (() => {
+        localStorage.removeItem('eg.onboard.concepts');
+        document.querySelector('[data-testid="theme-light"]').click();
+        // Clean tree so the concept cards pair with the 干净 empty state.
+        window.__eg.repoStore.setState({
+          status: { repoId: 'r1', branch: 'main', headOid: null, ahead: 0, behind: 0, isEmpty: false, staged: [], unstaged: [], conflicted: [] },
+        });
+        window.__eg.uiStore.getState().setView('changes');
+      })()
+    """, "59-light-concepts.png"),
 ]
 
 class Snapper:

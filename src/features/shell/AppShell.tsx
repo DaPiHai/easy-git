@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { handleShortcut } from '../../lib/shortcuts';
 import { useUiStore } from '../../stores/uiStore';
 import { useRepoStore } from '../../stores/repoStore';
 import { ToastHost } from '../../components';
@@ -22,7 +23,6 @@ import { SettingsPage } from '../settings/SettingsPage';
 /** PRD §6.1 frame: top bar / repo sidebar / main view / detail panel / bottom bar. */
 export function AppShell() {
   const view = useUiStore((s) => s.view);
-  const setSwitcherOpen = useUiStore((s) => s.setSwitcherOpen);
   const hasActiveRepo = useRepoStore((s) => s.activeId !== null);
   // F-24: a parked merge takes over the main view until resolved/aborted.
   const midMerge = useMergeStore((s) => s.mergeState !== null);
@@ -50,18 +50,14 @@ export function AppShell() {
     void useSyncStore.getState().refresh();
   }, [hasActiveRepo, status]);
 
-  // Ctrl/Cmd+K quick switcher (F-05 prototype).
+  // Global shortcuts v1 (m1-plan X-03): one entry point for all bindings.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
-        event.preventDefault();
-        const { switcherOpen, setSwitcherOpen: set } = useUiStore.getState();
-        set(!switcherOpen);
-      }
+      if (handleShortcut(event)) event.preventDefault();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [setSwitcherOpen]);
+  }, []);
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-canvas font-ui text-ink">

@@ -194,11 +194,43 @@ fn partial_staging_requires_confirmation() {
 
 #[test]
 fn missing_identity_is_a_clear_error() {
+    // Hermetic: repoint libgit2's global/xdg/system config search paths at an
+    // empty dir so the "no identity" precondition holds on any host. libgit2
+    // reads env once at init, so GIT_CONFIG_GLOBAL env vars don't work here.
+    let empty = std::env::temp_dir().join(format!("eg-empty-config-{}", std::process::id()));
+    std::fs::create_dir_all(&empty).unwrap();
+    let prev_global = unsafe { git2::opts::get_search_path(git2::ConfigLevel::Global) }.ok();
+    let prev_xdg = unsafe { git2::opts::get_search_path(git2::ConfigLevel::XDG) }.ok();
+    let prev_system = unsafe { git2::opts::get_search_path(git2::ConfigLevel::System) }.ok();
+    unsafe {
+        git2::opts::set_search_path(git2::ConfigLevel::Global, &empty).unwrap();
+        git2::opts::set_search_path(git2::ConfigLevel::XDG, &empty).unwrap();
+        git2::opts::set_search_path(git2::ConfigLevel::System, &empty).unwrap();
+    }
     let (_dir, repo) = init_repo();
     write_and_stage(&repo, "a.txt", "one\n");
     let err = commit::commit(&repo, "r1", &request("no identity")).unwrap_err();
     assert_eq!(err.code(), "internal");
     assert!(format!("{err:?}").contains("user.name"));
+    if let Some(p) = prev_global {
+        unsafe {
+            git2::opts::set_search_path(git2::ConfigLevel::Global, p.to_string_lossy().as_ref())
+        }
+        .ok();
+    }
+    if let Some(p) = prev_xdg {
+        unsafe {
+            git2::opts::set_search_path(git2::ConfigLevel::XDG, p.to_string_lossy().as_ref())
+        }
+        .ok();
+    }
+    if let Some(p) = prev_system {
+        unsafe {
+            git2::opts::set_search_path(git2::ConfigLevel::System, p.to_string_lossy().as_ref())
+        }
+        .ok();
+    }
+    let _ = std::fs::remove_dir_all(&empty);
 }
 
 #[test]

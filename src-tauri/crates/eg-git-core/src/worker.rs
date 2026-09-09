@@ -25,6 +25,10 @@ use super::{
 /// Quiet period before a burst of filesystem events triggers one change event.
 pub const FS_DEBOUNCE: Duration = Duration::from_millis(300);
 
+/// How long a repo must be idle (no commands, no pending user work) before a
+/// silent `gc --auto` / pack-refs pass runs (PRD §5.11).
+const MAINTENANCE_IDLE: Duration = Duration::from_secs(300);
+
 /// Upper bound for a blocking command round-trip; the UI stays responsive
 /// because commands run on the worker, never on the IPC caller.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
@@ -691,6 +695,10 @@ fn run_loop(
     on_change: ChangeSink,
 ) {
     let mut dirty: Option<Instant> = None;
+    // Idle maintenance marker (PRD §5.11): bumped by every incoming command
+    // and after each maintenance pass, so gc runs at most once per idle
+    // window.
+    let mut last_activity = Instant::now();
     loop {
         // 1. Coalesce filesystem bursts into a single pending change flag.
         while let Ok(event) = fs_rx.try_recv() {
@@ -710,12 +718,25 @@ fn run_loop(
             }
         }
 
+        // 2b. Silent maintenance while the repo has been idle (PRD §5.11):
+        // no pending user work and no command traffic for the idle window.
+        if dirty.is_none() && last_activity.elapsed() >= MAINTENANCE_IDLE {
+            if let Err(e) = crate::remote::GitCli::for_path(&workdir).maintenance() {
+                eprintln!("[eg] idle maintenance skipped: {e}");
+            }
+            last_activity = Instant::now();
+        }
+
         // 3. Wait for commands; wake in time for the pending debounce.
         let wait = dirty
             .map(|seen| FS_DEBOUNCE.saturating_sub(seen.elapsed()))
             .unwrap_or(FS_DEBOUNCE)
             .max(Duration::from_millis(10));
-        match rx.recv_timeout(wait) {
+        let received = rx.recv_timeout(wait);
+        if received.is_ok() {
+            last_activity = Instant::now();
+        }
+        match received {
             Ok(RepoCommand::Status(tx)) => {
                 let _ = tx.send(status::status(&repo_id, &repo));
             }

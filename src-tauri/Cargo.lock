@@ -762,7 +762,7 @@ checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 
 [[package]]
 name = "easy-git"
-version = "0.1.0"
+version = "0.1.0-rc.1"
 dependencies = [
  "eg-git-core",
  "eg-safety",
@@ -781,7 +781,7 @@ dependencies = [
 
 [[package]]
 name = "eg-git-core"
-version = "0.1.0"
+version = "0.1.0-rc.1"
 dependencies = [
  "eg-safety",
  "eg-types",
@@ -795,7 +795,7 @@ dependencies = [
 
 [[package]]
 name = "eg-indexer"
-version = "0.1.0"
+version = "0.1.0-rc.1"
 dependencies = [
  "serde",
  "specta",
@@ -803,14 +803,14 @@ dependencies = [
 
 [[package]]
 name = "eg-providers"
-version = "0.1.0"
+version = "0.1.0-rc.1"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "eg-safety"
-version = "0.1.0"
+version = "0.1.0-rc.1"
 dependencies = [
  "eg-types",
  "git2",
@@ -821,7 +821,7 @@ dependencies = [
 
 [[package]]
 name = "eg-types"
-version = "0.1.0"
+version = "0.1.0-rc.1"
 dependencies = [
  "serde",
  "serde_json",
