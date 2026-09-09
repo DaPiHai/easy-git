@@ -6,9 +6,16 @@
 
 use eg_types::{EgError, MergeOutcome, MergeState, ResetMode, ResetOutcome, StatusReport};
 use git2::build::CheckoutBuilder;
-use git2::{AnnotatedCommit, Repository, ResetType};
+use git2::{AnnotatedCommit, Oid, Repository, ResetType};
 
 use crate::status;
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
 
 fn err(context: &'static str) -> impl Fn(git2::Error) -> EgError {
     move |e| EgError::Internal {
@@ -98,7 +105,7 @@ pub fn merge_state(repo: &Repository) -> Result<Option<MergeState>, EgError> {
 
 /// Blocks a tracked-dirty worktree (merge/revert need a clean tree; untracked
 /// files are allowed, like git).
-fn ensure_clean(repo: &Repository) -> Result<(), EgError> {
+pub fn ensure_clean(repo: &Repository) -> Result<(), EgError> {
     let statuses = repo.statuses(None).map_err(err("status"))?;
     let dirty: Vec<String> = statuses
         .iter()
@@ -156,8 +163,12 @@ pub fn merge_start(
     }
     ensure_clean(repo)?;
 
+    // `name` may be a plain branch (refs/heads/…) or a full ref such as
+    // `origin/main` from pull integration (refs/remotes/origin/main).
     let branch_ref = repo
         .find_reference(&format!("refs/heads/{name}"))
+        .or_else(|_| repo.find_reference(name))
+        .or_else(|_| repo.find_reference(&format!("refs/remotes/{name}")))
         .map_err(err("find branch"))?;
     let their_commit = branch_ref.peel_to_commit().map_err(err("peel"))?;
     let annotated: AnnotatedCommit<'_> = repo
@@ -397,34 +408,41 @@ pub fn revert_commits(
 /// Reset with the three git modes (m1-plan R-20). Hard resets snapshot the
 /// doomed content first and return an op id for the 撤销 toast; soft/mixed
 /// destroy nothing.
-pub fn reset(
-    repo: &mut Repository,
-    repo_id: &str,
-    mode: ResetMode,
+/// Reset plan computed BEFORE any mutation: the paths whose worktree content
+/// a hard reset would destroy, the pre-reset branch tip (undo anchor) and
+/// the target commit.
+fn resolve_reset_target<'repo>(
+    repo: &'repo Repository,
     target_hex: Option<&str>,
-    safety: &eg_safety::Safety,
-) -> Result<ResetOutcome, EgError> {
-    let target = match target_hex {
+) -> Result<git2::Commit<'repo>, EgError> {
+    match target_hex {
         Some(hex) => {
-            let id = git2::Oid::from_str(hex).map_err(|e| EgError::Internal {
+            let id = Oid::from_str(hex).map_err(|e| EgError::Internal {
                 context: format!("invalid commit id: {e}"),
             })?;
-            repo.find_commit(id).map_err(err("find commit"))?
+            repo.find_commit(id).map_err(err("find commit"))
         }
         None => repo
             .head()
             .map_err(err("head"))?
             .peel_to_commit()
-            .map_err(err("peel"))?,
-    };
+            .map_err(err("peel")),
+    }
+}
 
-    let prev_head = repo
+fn reset_plan<'repo>(
+    repo: &'repo Repository,
+    mode: ResetMode,
+    target_hex: Option<&str>,
+) -> Result<(Vec<String>, Option<Oid>, git2::Commit<'repo>), EgError> {
+    let target = resolve_reset_target(repo, target_hex)?;
+    let prev_tip = repo
         .head()
         .ok()
         .and_then(|h| h.peel_to_commit().ok())
         .map(|c| c.id());
     let changed_paths: Vec<String> = if mode == ResetMode::Hard {
-        let head_tree = prev_head
+        let head_tree = prev_tip
             .and_then(|id| repo.find_commit(id).ok())
             .and_then(|c| c.tree().ok());
         let target_tree = target.tree().ok();
@@ -445,44 +463,91 @@ pub fn reset(
     } else {
         Vec::new()
     };
+    Ok((changed_paths, prev_tip, target))
+}
+
+pub fn reset(
+    repo: &mut Repository,
+    repo_id: &str,
+    mode: ResetMode,
+    target_hex: Option<&str>,
+    safety: &eg_safety::Safety,
+) -> Result<ResetOutcome, EgError> {
+    reset_with_record(repo, repo_id, mode, target_hex, safety, None).map(|o| o.1)
+}
+
+/// Full reset with snapshot + record. `reactivated` replays an existing op:
+/// the record is re-issued with the ORIGINAL op id/snapshot so undoing the
+/// redone op still unwinds to its original snapshot (引用快照树).
+pub fn reset_with_record(
+    repo: &mut Repository,
+    repo_id: &str,
+    mode: ResetMode,
+    target_hex: Option<&str>,
+    safety: &eg_safety::Safety,
+    reactivated: Option<eg_safety::OpRecord>,
+) -> Result<(String, ResetOutcome), EgError> {
+    // Plan first: changed paths + undo anchor from the PRE-reset state.
+    let (changed_paths, prev_tip, target) = reset_plan(repo, mode, target_hex)?;
 
     let op_id = if mode == ResetMode::Hard {
-        let id = uuid::Uuid::new_v4().to_string();
-        let paths: Vec<String> = changed_paths.clone();
-        let snapshot_ref = if paths.is_empty() {
-            None
-        } else {
-            Some(eg_safety::snapshot_worktree(
-                repo,
-                &id,
-                eg_safety::OpKind::Reset,
-                &paths,
-            )?)
-        };
-        let prev_hex = prev_head.map(|o| o.to_string()).unwrap_or_default();
-        let mut record_paths = vec![prev_hex];
-        record_paths.extend(paths);
-        safety
-            .record(
-                repo_id,
-                &eg_safety::OpRecord {
-                    op_id: id.clone(),
-                    time: std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs(),
-                    kind: eg_safety::OpKind::Reset,
-                    paths: record_paths,
-                    snapshot_ref,
-                    undone: false,
-                },
-            )
-            .map_err(|e| EgError::Internal {
-                context: format!("安全日志写入失败：{e}"),
-            })?;
-        Some(id)
+        match &reactivated {
+            Some(original) => {
+                safety
+                    .record(
+                        repo_id,
+                        &eg_safety::OpRecord {
+                            op_id: original.op_id.clone(),
+                            time: now_secs(),
+                            kind: original.kind,
+                            paths: original.paths.clone(),
+                            snapshot_ref: original.snapshot_ref.clone(),
+                            target: original.target.clone(),
+                            undone: false,
+                        },
+                    )
+                    .map_err(|e| EgError::Internal {
+                        context: format!("安全日志写入失败：{e}"),
+                    })?;
+                original.op_id.clone()
+            }
+            None => {
+                // Snapshot BEFORE the reset destroys the doomed content.
+                let id = uuid::Uuid::new_v4().to_string();
+                let paths: Vec<String> = changed_paths.clone();
+                let snapshot_ref = if paths.is_empty() {
+                    None
+                } else {
+                    Some(eg_safety::snapshot_worktree(
+                        repo,
+                        &id,
+                        eg_safety::OpKind::Reset,
+                        &paths,
+                    )?)
+                };
+                let mut record_paths = vec![prev_tip.map(|o| o.to_string()).unwrap_or_default()];
+                record_paths.extend(paths);
+                safety
+                    .record(
+                        repo_id,
+                        &eg_safety::OpRecord {
+                            op_id: id.clone(),
+                            time: now_secs(),
+                            kind: eg_safety::OpKind::Reset,
+                            paths: record_paths,
+                            snapshot_ref,
+                            target: Some(target.id().to_string()),
+                            undone: false,
+                        },
+                    )
+                    .map_err(|e| EgError::Internal {
+                        context: format!("安全日志写入失败：{e}"),
+                    })?;
+                id
+            }
+        }
     } else {
-        None
+        String::new()
     };
 
     let reset_type = match mode {
@@ -492,11 +557,15 @@ pub fn reset(
     };
     repo.reset(target.as_object(), reset_type, None)
         .map_err(err("reset"))?;
+    let status = status::status(repo_id, repo)?;
 
-    Ok(ResetOutcome {
-        op_id,
-        status: status::status(repo_id, repo)?,
-    })
+    Ok((
+        op_id.clone(),
+        ResetOutcome {
+            op_id: if op_id.is_empty() { None } else { Some(op_id) },
+            status,
+        },
+    ))
 }
 
 /// Restores a hard reset from the 撤销 toast: rebuild the doomed files from

@@ -47,7 +47,7 @@ fn safety() -> (TempDir, Safety) {
 
 #[test]
 fn stage_and_unstage_whole_file() {
-    let (_dir, mut repo) = init_repo();
+    let (_dir, repo) = init_repo();
     commit_file(&repo, "a.txt", "one\n", "init");
     std::fs::write(repo.workdir().unwrap().join("a.txt"), "two\n").unwrap();
     std::fs::write(repo.workdir().unwrap().join("new.txt"), "n\n").unwrap();
@@ -67,7 +67,7 @@ fn stage_and_unstage_whole_file() {
 
 #[test]
 fn unstage_staged_new_file_with_unborn_head() {
-    let (_dir, mut repo) = init_repo();
+    let (_dir, repo) = init_repo();
     std::fs::write(repo.workdir().unwrap().join("x.txt"), "x\n").unwrap();
     ops::stage(&repo, &paths(&["x.txt"]), StageMode::Stage).expect("stage");
     ops::stage(&repo, &paths(&["x.txt"]), StageMode::Unstage).expect("unstage");
@@ -184,7 +184,7 @@ fn double_undo_is_rejected() {
 
 #[test]
 fn ignore_writes_rules_and_filters_status() {
-    let (_dir, mut repo) = init_repo();
+    let (_dir, repo) = init_repo();
     commit_file(&repo, "a.txt", "one\n", "init");
     std::fs::write(repo.workdir().unwrap().join("debug.log"), "d\n").unwrap();
     std::fs::write(repo.workdir().unwrap().join("app.log"), "a\n").unwrap();

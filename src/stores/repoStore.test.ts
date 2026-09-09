@@ -40,6 +40,10 @@ vi.mock('../lib/ipc/commands', () => ({
   getStatus: (repoId: string) => getStatusMock(repoId),
   pickDirectory: vi.fn(async () => null),
   formatIpcError: (e: unknown) => ({ title: '找不到仓库', detail: String(e) }),
+  events: {
+    repoChanged: { listen: vi.fn(async () => () => {}) },
+    syncProgress: { listen: vi.fn(async () => () => {}) },
+  },
 }));
 
 beforeEach(() => {

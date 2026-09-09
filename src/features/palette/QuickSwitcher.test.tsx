@@ -22,6 +22,10 @@ vi.mock('../../lib/ipc/commands', () => ({
   })),
   pickDirectory: vi.fn(async () => null),
   formatIpcError: (e: unknown) => ({ title: String(e), detail: '' }),
+  events: {
+    repoChanged: { listen: vi.fn(async () => () => {}) },
+    syncProgress: { listen: vi.fn(async () => () => {}) },
+  },
 }));
 
 beforeEach(() => {

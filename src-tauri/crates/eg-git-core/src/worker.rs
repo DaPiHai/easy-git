@@ -18,7 +18,9 @@ use eg_types::{ConfigScope, EgError, IgnoreMode, RepoId, RepoSummary, StageMode,
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use uuid::Uuid;
 
-use super::{commit, config, conflicts, diff, log, merge, ops, refs, repo, stash, status};
+use super::{
+    commit, config, conflicts, diff, log, merge, ops, refs, remote, repo, stash, status, timeline,
+};
 
 /// Quiet period before a burst of filesystem events triggers one change event.
 pub const FS_DEBOUNCE: Duration = Duration::from_millis(300);
@@ -175,6 +177,60 @@ enum RepoCommand {
         target: Option<String>,
         safety: Arc<eg_safety::Safety>,
         reply: Sender<Result<eg_types::ResetOutcome, EgError>>,
+    },
+    RemoteList {
+        reply: Sender<Result<Vec<eg_types::RemoteInfo>, EgError>>,
+    },
+    RemoteAdd {
+        name: String,
+        url: String,
+        reply: Sender<Result<(), EgError>>,
+    },
+    RemoteRename {
+        old_name: String,
+        new_name: String,
+        reply: Sender<Result<Vec<String>, EgError>>,
+    },
+    RemoteRemove {
+        name: String,
+        reply: Sender<Result<(), EgError>>,
+    },
+    RemoteSetUrl {
+        name: String,
+        url: String,
+        reply: Sender<Result<(), EgError>>,
+    },
+    PullIntegrate {
+        remote: String,
+        branch: String,
+        strategy: eg_types::SyncStrategy,
+        reply: Sender<Result<eg_types::MergeOutcome, EgError>>,
+    },
+    Redo {
+        safety: Arc<eg_safety::Safety>,
+        reply: Sender<Result<DiscardOutcome, EgError>>,
+    },
+    Timeline {
+        limit: u32,
+        safety: Arc<eg_safety::Safety>,
+        reply: Sender<Result<Vec<eg_types::TimelineEntry>, EgError>>,
+    },
+    RestoreTo {
+        oid: String,
+        safety: Arc<eg_safety::Safety>,
+        reply: Sender<Result<eg_types::ResetOutcome, EgError>>,
+    },
+    BranchSetUpstream {
+        branch: String,
+        upstream: Option<String>,
+        reply: Sender<Result<eg_types::BranchInfo, EgError>>,
+    },
+    UndoState {
+        safety: Arc<eg_safety::Safety>,
+        reply: Sender<Result<eg_types::UndoRedoState, EgError>>,
+    },
+    RemoteBranchList {
+        reply: Sender<Result<Vec<String>, EgError>>,
     },
     Close(Sender<()>),
 }
@@ -451,6 +507,95 @@ impl WorkerHandle {
             mode,
             target,
             safety,
+            reply,
+        })
+    }
+
+    pub fn remote_list(&self) -> Result<Vec<eg_types::RemoteInfo>, EgError> {
+        self.request(|reply| RepoCommand::RemoteList { reply })
+    }
+
+    pub fn remote_add(&self, name: String, url: String) -> Result<(), EgError> {
+        self.request(|reply| RepoCommand::RemoteAdd { name, url, reply })
+    }
+
+    pub fn remote_rename(
+        &self,
+        old_name: String,
+        new_name: String,
+    ) -> Result<Vec<String>, EgError> {
+        self.request(|reply| RepoCommand::RemoteRename {
+            old_name,
+            new_name,
+            reply,
+        })
+    }
+
+    pub fn remote_remove(&self, name: String) -> Result<(), EgError> {
+        self.request(|reply| RepoCommand::RemoteRemove { name, reply })
+    }
+
+    pub fn remote_set_url(&self, name: String, url: String) -> Result<(), EgError> {
+        self.request(|reply| RepoCommand::RemoteSetUrl { name, url, reply })
+    }
+
+    pub fn pull_integrate(
+        &self,
+        remote: String,
+        branch: String,
+        strategy: eg_types::SyncStrategy,
+    ) -> Result<eg_types::MergeOutcome, EgError> {
+        self.request(|reply| RepoCommand::PullIntegrate {
+            remote,
+            branch,
+            strategy,
+            reply,
+        })
+    }
+
+    pub fn redo(&self, safety: Arc<eg_safety::Safety>) -> Result<DiscardOutcome, EgError> {
+        self.request(|reply| RepoCommand::Redo { safety, reply })
+    }
+
+    pub fn timeline(
+        &self,
+        limit: u32,
+        safety: Arc<eg_safety::Safety>,
+    ) -> Result<Vec<eg_types::TimelineEntry>, EgError> {
+        self.request(|reply| RepoCommand::Timeline {
+            limit,
+            safety,
+            reply,
+        })
+    }
+
+    pub fn restore_to(
+        &self,
+        oid: String,
+        safety: Arc<eg_safety::Safety>,
+    ) -> Result<eg_types::ResetOutcome, EgError> {
+        self.request(|reply| RepoCommand::RestoreTo { oid, safety, reply })
+    }
+
+    pub fn undo_state(
+        &self,
+        safety: Arc<eg_safety::Safety>,
+    ) -> Result<eg_types::UndoRedoState, EgError> {
+        self.request(|reply| RepoCommand::UndoState { safety, reply })
+    }
+
+    pub fn remote_branch_list(&self) -> Result<Vec<String>, EgError> {
+        self.request(|reply| RepoCommand::RemoteBranchList { reply })
+    }
+
+    pub fn branch_set_upstream(
+        &self,
+        branch: String,
+        upstream: Option<String>,
+    ) -> Result<eg_types::BranchInfo, EgError> {
+        self.request(|reply| RepoCommand::BranchSetUpstream {
+            branch,
+            upstream,
             reply,
         })
     }
@@ -765,6 +910,93 @@ fn run_loop(
                     target.as_deref(),
                     &safety,
                 ));
+            }
+            Ok(RepoCommand::RemoteList { reply }) => {
+                let _ = reply.send(remote::remote_list(&repo));
+            }
+            Ok(RepoCommand::RemoteAdd { name, url, reply }) => {
+                let _ = reply.send(remote::remote_add(&repo, &name, &url));
+            }
+            Ok(RepoCommand::RemoteRename {
+                old_name,
+                new_name,
+                reply,
+            }) => {
+                let _ = reply.send(remote::remote_rename(&repo, &old_name, &new_name));
+            }
+            Ok(RepoCommand::RemoteRemove { name, reply }) => {
+                let _ = reply.send(remote::remote_remove(&repo, &name));
+            }
+            Ok(RepoCommand::RemoteSetUrl { name, url, reply }) => {
+                let _ = reply.send(remote::remote_set_url(&repo, &name, &url));
+            }
+            Ok(RepoCommand::PullIntegrate {
+                remote,
+                branch,
+                strategy,
+                reply,
+            }) => {
+                let _ = reply.send(remote::pull_integrate(
+                    &mut repo, &repo_id, &remote, &branch, strategy,
+                ));
+            }
+            Ok(RepoCommand::Redo { safety, reply }) => {
+                let _ = reply.send(ops::redo_last(&mut repo, &repo_id, &safety).and_then(
+                    |op_id| {
+                        status::status(&repo_id, &repo)
+                            .map(|status| DiscardOutcome { op_id, status })
+                    },
+                ));
+            }
+            Ok(RepoCommand::Timeline {
+                limit,
+                safety,
+                reply,
+            }) => {
+                let _ = reply.send(timeline::timeline(&repo, &repo_id, &safety, limit));
+            }
+            Ok(RepoCommand::RestoreTo { oid, safety, reply }) => {
+                let _ = reply.send(timeline::restore_to(&mut repo, &repo_id, &safety, &oid));
+            }
+            Ok(RepoCommand::BranchSetUpstream {
+                branch,
+                upstream,
+                reply,
+            }) => {
+                let _ = reply.send(
+                    refs::set_branch_upstream(&repo, &branch, upstream.as_deref()).and_then(|()| {
+                        let name = branch.clone();
+                        refs::list_branches_info(&repo).and_then(|list| {
+                            list.into_iter().find(|b| b.name == name).ok_or_else(|| {
+                                EgError::Internal {
+                                    context: "branch vanished after upstream set".into(),
+                                }
+                            })
+                        })
+                    }),
+                );
+            }
+            Ok(RepoCommand::UndoState { safety, reply }) => {
+                let history = safety.history(&repo_id);
+                let undoable = history.iter().find(|r| !r.undone);
+                let label = undoable
+                    .map(|r| match r.kind {
+                        eg_safety::OpKind::Discard => "丢弃修改",
+                        eg_safety::OpKind::Clean => "清理未跟踪",
+                        eg_safety::OpKind::RefDelete => "删除分支/标签",
+                        eg_safety::OpKind::Reset => "重置",
+                        eg_safety::OpKind::ForcePush => "强制推送",
+                    })
+                    .unwrap_or_default()
+                    .to_string();
+                let _ = reply.send(Ok(eg_types::UndoRedoState {
+                    undoable_op_id: undoable.map(|r| r.op_id.clone()),
+                    undoable_label: label,
+                    redoable: history.iter().any(|r| r.undone),
+                }));
+            }
+            Ok(RepoCommand::RemoteBranchList { reply }) => {
+                let _ = reply.send(refs::list_remote_branches(&repo));
             }
             Ok(RepoCommand::Close(tx)) => {
                 let _ = tx.send(());

@@ -27,11 +27,16 @@ import {
   type RepoSummary,
   type ResetMode,
   type ResetOutcome,
+  type RemoteInfo,
   type StageLinesRequest,
   type StageMode,
   type StatusReport,
   type StashEntry,
+  type SyncStrategy,
+  type SyncProgressEvent,
   type TagInfo,
+  type TimelineEntry,
+  type UndoRedoState,
 } from './bindings';
 import type { EgErrorLike, HumanizedError } from './errors';
 import { humanizeEgError } from './errors';
@@ -55,6 +60,7 @@ export type {
   LogPage,
   MergeOutcome,
   MergeState,
+  RemoteInfo,
   RepoSummary,
   ResetMode,
   ResetOutcome,
@@ -62,7 +68,11 @@ export type {
   StageMode,
   StatusReport,
   StashEntry,
+  SyncStrategy,
+  SyncProgressEvent,
   TagInfo,
+  TimelineEntry,
+  UndoRedoState,
 };
 export type {
   ChangeEntry,
@@ -73,6 +83,7 @@ export type {
   SelectedHunk,
 } from './bindings';
 export type { EgErrorLike, HumanizedError } from './errors';
+export { events } from './bindings';
 
 /** The shape tauri-specta's ErrorHandlingMode::Result produces per command. */
 export type CommandResult<T, E> = { status: 'ok'; data: T } | { status: 'error'; error: E };
@@ -378,6 +389,120 @@ export async function resetCommits(
   target: string | null,
 ): Promise<ResetOutcome> {
   const r = await commands.resetCommits(repoId, mode, target);
+  if (r.status === 'error') throw r.error;
+  return r.data;
+}
+
+export async function fetchRemote(
+  repoId: string,
+  remote: string,
+  prune: boolean,
+): Promise<StatusReport> {
+  const r = await commands.syncFetch(repoId, remote, prune);
+  if (r.status === 'error') throw r.error;
+  return r.data;
+}
+
+export async function pullRemote(
+  repoId: string,
+  remote: string,
+  branch: string,
+  strategy: SyncStrategy,
+): Promise<MergeOutcome> {
+  const r = await commands.syncPull(repoId, remote, branch, strategy);
+  if (r.status === 'error') throw r.error;
+  return r.data;
+}
+
+export async function pushRemote(
+  repoId: string,
+  remote: string,
+  branch: string,
+  force: boolean,
+): Promise<StatusReport> {
+  const r = await commands.syncPush(repoId, remote, branch, force);
+  if (r.status === 'error') throw r.error;
+  return r.data;
+}
+
+export async function remoteTest(repoId: string, remote: string): Promise<number> {
+  const r = await commands.remoteTest(repoId, remote);
+  if (r.status === 'error') throw r.error;
+  return r.data;
+}
+
+export async function cloneRepo(url: string, path: string): Promise<RepoSummary> {
+  const r = await commands.repoClone(url, path);
+  if (r.status === 'error') throw r.error;
+  return r.data;
+}
+
+export async function remoteList(repoId: string): Promise<RemoteInfo[]> {
+  const r = await commands.remoteList(repoId);
+  if (r.status === 'error') throw r.error;
+  return r.data;
+}
+
+export async function remoteAdd(repoId: string, name: string, url: string): Promise<void> {
+  const r = await commands.remoteAdd(repoId, name, url);
+  if (r.status === 'error') throw r.error;
+}
+
+export async function remoteRename(
+  repoId: string,
+  oldName: string,
+  newName: string,
+): Promise<void> {
+  const r = await commands.remoteRename(repoId, oldName, newName);
+  if (r.status === 'error') throw r.error;
+}
+
+export async function remoteRemove(repoId: string, name: string): Promise<void> {
+  const r = await commands.remoteRemove(repoId, name);
+  if (r.status === 'error') throw r.error;
+}
+
+export async function remoteSetUrl(repoId: string, name: string, url: string): Promise<void> {
+  const r = await commands.remoteSetUrl(repoId, name, url);
+  if (r.status === 'error') throw r.error;
+}
+
+export async function redoOperation(repoId: string): Promise<DiscardOutcome> {
+  const r = await commands.redoOperation(repoId);
+  if (r.status === 'error') throw r.error;
+  return r.data;
+}
+
+export async function timelineGet(repoId: string, limit: number): Promise<TimelineEntry[]> {
+  const r = await commands.timelineGet(repoId, limit);
+  if (r.status === 'error') throw r.error;
+  return r.data;
+}
+
+export async function restoreTo(repoId: string, oid: string): Promise<ResetOutcome> {
+  const r = await commands.timelineRestore(repoId, oid);
+  if (r.status === 'error') throw r.error;
+  return r.data;
+}
+
+export async function branchSetUpstream(
+  repoId: string,
+  branch: string,
+  upstream: string | null,
+): Promise<BranchInfo> {
+  const r = await commands.branchSetUpstream(repoId, branch, upstream);
+  if (r.status === 'error') throw r.error;
+  return r.data;
+}
+
+export async function undoRedoState(repoId: string): Promise<UndoRedoState> {
+  const r = await commands.undoRedoState(repoId);
+  if (r.status === 'error') throw r.error;
+  return r.data;
+}
+
+export async function remoteBranchList(repoId: string): Promise<string[]> {
+  const r = await commands.remoteBranchList(repoId);
   if (r.status === 'error') throw r.error;
   return r.data;
 }

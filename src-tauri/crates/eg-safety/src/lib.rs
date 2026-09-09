@@ -31,6 +31,10 @@ pub enum OpKind {
     /// Hard reset: `paths[0]` is the pre-reset branch tip oid, the rest are
     /// the file paths whose content the snapshot preserves.
     Reset,
+    /// Force push: `paths[0]` = branch name on the remote, `paths[1]` = the
+    /// remote tip BEFORE the force push, `paths[2]` = remote name. Undo
+    /// restores the remote ref by pushing the old tip back (强推可回滚).
+    ForcePush,
 }
 
 /// One append-only log line (`<root>/<repo-id>/operations.jsonl`).
@@ -43,6 +47,10 @@ pub struct OpRecord {
     pub paths: Vec<String>,
     /// Backup ref holding the pre-operation content, if anything existed.
     pub snapshot_ref: Option<String>,
+    /// Extra payload: for Reset records the oid the branch was reset TO
+    /// (redo replays the reset against it). Absent in older records.
+    #[serde(default)]
+    pub target: Option<String>,
     /// Log is append-only: the latest record for an op_id wins, so undo
     /// appends a copy with `undone: true`.
     #[serde(default)]

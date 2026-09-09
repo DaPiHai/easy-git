@@ -9,6 +9,7 @@ import { useRepoStore } from './stores/repoStore';
 import { useUiStore } from './stores/uiStore';
 import { useToastStore } from './stores/toastStore';
 import { useMergeStore } from './stores/mergeStore';
+import { useSyncStore } from './stores/syncStore';
 import './theme/theme.css';
 
 // Dev-only handle for the snapshot/E2E harness (scripts/snapshot-ui.py).
@@ -22,6 +23,7 @@ if (import.meta.env.DEV) {
     diffStore: useDiffStore,
     refsStore: useRefStore,
     mergeStore: useMergeStore,
+    syncStore: useSyncStore,
   };
 }
 

@@ -115,11 +115,50 @@ export const commands = {
 	 *  snapshot first and return an op id for the 撤销 toast.
 	 */
 	resetCommits: (repoId: string, mode: ResetMode, target: string | null) => typedError<ResetOutcome, EgError>(__TAURI_INVOKE("reset_commits", { repoId, mode, target })),
+	/**
+	 *  Fetches a remote (m1-plan R-22): CLI with live progress, then a worker
+	 *  status refresh (fs-watch also fires from the ref updates).
+	 */
+	syncFetch: (repoId: string, remote: string, prune: boolean) => typedError<StatusReport, EgError>(__TAURI_INVOKE("sync_fetch", { repoId, remote, prune })),
+	/**
+	 *  Pulls (R-22/F-27): CLI fetch with progress, then the W8 merge machinery
+	 *  integrates the upstream — conflicts land in the wizard, ff-only refuses
+	 *  divergence so the 分叉情况选择 can offer a merge.
+	 */
+	syncPull: (repoId: string, remote: string, branch: string, strategy: SyncStrategy) => typedError<MergeOutcome, EgError>(__TAURI_INVOKE("sync_pull", { repoId, remote, branch, strategy })),
+	/**
+	 *  Pushes the current branch (R-22). Force pushes record the pre-push remote
+	 *  tip in eg-safety first (强推可回滚): undo pushes the old tip back.
+	 */
+	syncPush: (repoId: string, remote: string, branch: string, force: boolean) => typedError<StatusReport, EgError>(__TAURI_INVOKE("sync_push", { repoId, remote, branch, force })),
+	/**  Connectivity test (R-24): `git ls-remote`, reports ref count. */
+	remoteTest: (repoId: string, remote: string) => typedError<number, EgError>(__TAURI_INVOKE("remote_test", { repoId, remote })),
+	/**  Clones a repository (W2 顺延 + m1-plan R-22), then opens it (F-06 clone 入口). */
+	repoClone: (url: string, path: string) => typedError<RepoSummary, EgError>(__TAURI_INVOKE("repo_clone", { url, path })),
+	remoteList: (repoId: string) => typedError<RemoteInfo[], EgError>(__TAURI_INVOKE("remote_list", { repoId })),
+	/**  Adds a remote (R-24); the summary refreshes via fs-watch. */
+	remoteAdd: (repoId: string, name: string, url: string) => typedError<null, EgError>(__TAURI_INVOKE("remote_add", { repoId, name, url })),
+	remoteRename: (repoId: string, oldName: string, newName: string) => typedError<null, EgError>(__TAURI_INVOKE("remote_rename", { repoId, oldName, newName })),
+	remoteRemove: (repoId: string, name: string) => typedError<null, EgError>(__TAURI_INVOKE("remote_remove", { repoId, name })),
+	remoteSetUrl: (repoId: string, name: string, url: string) => typedError<null, EgError>(__TAURI_INVOKE("remote_set_url", { repoId, name, url })),
+	/**  Redoes the most recent undone operation (R-25 撤销/重做引擎). */
+	redoOperation: (repoId: string) => typedError<DiscardOutcome, EgError>(__TAURI_INVOKE("redo_operation", { repoId })),
+	/**  操作时间线 (m1-plan F-28): reflog + safety op log merged, newest first. */
+	timelineGet: (repoId: string, limit: number | null) => typedError<TimelineEntry[], EgError>(__TAURI_INVOKE("timeline_get", { repoId, limit })),
+	/**  恢复到此状态 (F-28): snapshot-protected hard reset to a timeline entry. */
+	timelineRestore: (repoId: string, oid: string) => typedError<ResetOutcome, EgError>(__TAURI_INVOKE("timeline_restore", { repoId, oid })),
+	/**  Sets (or clears) a branch's upstream (W7 顺延, m1-plan W9). */
+	branchSetUpstream: (repoId: string, branch: string, upstream: string | null) => typedError<BranchInfo, EgError>(__TAURI_INVOKE("branch_set_upstream", { repoId, branch, upstream })),
+	/**  Bottom-bar 撤销/重做 availability (m1-plan R-25). */
+	undoRedoState: (repoId: string) => typedError<UndoRedoState, EgError>(__TAURI_INVOKE("undo_redo_state", { repoId })),
+	/**  Remote branch short names for the set-upstream dialog. */
+	remoteBranchList: (repoId: string) => typedError<string[], EgError>(__TAURI_INVOKE("remote_branch_list", { repoId })),
 };
 
 /** Events */
 export const events = {
 	repoChanged: makeEvent<RepoChanged>("repo://changed"),
+	syncProgress: makeEvent<SyncProgressEvent>("sync://progress"),
 };
 
 /* Types */
@@ -405,6 +444,14 @@ export type MergeState = {
 	theirs: string[],
 };
 
+/**  One configured remote (m1-plan R-24 / F-29). */
+export type RemoteInfo = {
+	name: string,
+	url: string,
+	/**  Distinct push URL when configured (rare; None means same as url). */
+	pushUrl: string | null,
+};
+
 /**  The frontend refreshes status for `repo_id` (debounced 300ms upstream). */
 export type RepoChanged = {
 	repoId: string,
@@ -484,6 +531,27 @@ export type StatusReport = {
 	conflicted: ChangeEntry[],
 };
 
+/**
+ *  Sync task strip progress (m1-plan R-22/F-27): network operations stream
+ *  their `git --progress` lines here. `percent` is Some when parseable.
+ */
+export type SyncProgressEvent = {
+	repoId: string,
+	/**  fetch | pull | push | clone | test */
+	task: string,
+	message: string,
+	percent: number | null,
+	/**  Final event of the task (strip may clear afterwards). */
+	done: boolean,
+};
+
+/**  How pull integrates a fetched upstream (F-27 分叉情况选择). */
+export type SyncStrategy = 
+/**  Fast-forward or refuse (git pull --ff-only). */
+"ff_only" | 
+/**  Merge into the current branch; conflicts land in the wizard (W8). */
+"merge";
+
 /**  One tag (m1-plan R-17). */
 export type TagInfo = {
 	name: string,
@@ -494,6 +562,32 @@ export type TagInfo = {
 	message: string | null,
 	/**  Tag creation time (annotated) or target commit time (lightweight). */
 	time: number | null,
+};
+
+/**
+ *  One line of the 操作时间线 (m1-plan F-28, UI §6.10): reflog entries and
+ *  eg-safety operation records merged into a single feed.
+ */
+export type TimelineEntry = {
+	/**  Commit oid the entry points at (reflog: id_new; op log: target). */
+	oid: string | null,
+	subject: string,
+	/**  commit | merge | reset | discard | clean | ref_delete | fetch | other */
+	kind: string,
+	/**  Danger entries get the danger outline (重置/强推/丢弃/删除). */
+	danger: boolean,
+	/**  Unix epoch seconds (f64 — specta forbids BigInt-style types). */
+	time: number | null,
+};
+
+/**  Availability of the bottom-bar 撤销/重做 buttons (m1-plan R-25). */
+export type UndoRedoState = {
+	/**  Op id of the latest non-undone record (undoable), if any. */
+	undoableOpId: string | null,
+	/**  Human label for the undo toast target (e.g. 丢弃修改). */
+	undoableLabel: string,
+	/**  True when some undone record exists to replay. */
+	redoable: boolean,
 };
 
 /**

@@ -1,15 +1,29 @@
 import { Redo2, Undo2, ChevronDown } from 'lucide-react';
 import { t } from '../../lib/i18n';
+import { useRepoStore } from '../../stores/repoStore';
+import { useSyncStore } from '../../stores/syncStore';
 import { useUiStore } from '../../stores/uiStore';
 import { LensPanel } from './LensPanel';
 
 /**
  * 28px bottom bar (UI doc §5.1): mode switch · undo/redo · command lens · task progress.
- * Undo/redo and tasks activate with eg-safety (W9); mode switch with settings (W4).
+ * Undo/redo drive the eg-safety 引用快照树 engine (R-25); the strip shows
+ * network task progress (R-22/F-27).
  */
 export function BottomBar() {
   const expertMode = useUiStore((s) => s.expertMode);
   const toggleExpertMode = useUiStore((s) => s.toggleExpertMode);
+  const undoRedo = useSyncStore((s) => s.undoRedo);
+  const redo = useSyncStore((s) => s.redo);
+  const undoOperation = useRepoStore((s) => s.undoOperation);
+  const progress = useSyncStore((s) => s.progress);
+  const activeId = useRepoStore((s) => s.activeId);
+
+  const onUndo = () => {
+    const opId = undoRedo?.undoableOpId;
+    if (!opId) return;
+    void undoOperation(opId).then(() => useSyncStore.getState().refresh());
+  };
 
   return (
     <footer
@@ -30,18 +44,22 @@ export function BottomBar() {
       <div className="flex items-center gap-eg-2">
         <button
           type="button"
-          disabled
+          disabled={!activeId || !undoRedo?.undoableOpId}
           aria-label={t('bottom.undo')}
-          title={t('bottom.undo')}
+          title={undoRedo?.undoableLabel || t('bottom.undo')}
+          data-testid="undo-button"
+          onClick={onUndo}
           className="flex size-5 items-center justify-center rounded-sm hover:bg-surface-2 disabled:pointer-events-none disabled:opacity-40"
         >
           <Undo2 className="size-3.5" aria-hidden />
         </button>
         <button
           type="button"
-          disabled
+          disabled={!activeId || !undoRedo?.redoable}
           aria-label={t('bottom.redo')}
           title={t('bottom.redo')}
+          data-testid="redo-button"
+          onClick={() => void redo()}
           className="flex size-5 items-center justify-center rounded-sm hover:bg-surface-2 disabled:pointer-events-none disabled:opacity-40"
         >
           <Redo2 className="size-3.5" aria-hidden />
@@ -51,7 +69,23 @@ export function BottomBar() {
       <LensPanel />
 
       <div className="ml-auto flex items-center gap-eg-4" data-testid="status-area">
-        <span className="text-ink-tertiary">{t('bottom.task.none')}</span>
+        {progress ? (
+          <span className="flex items-center gap-2" data-testid="sync-task-strip">
+            <span className="max-w-[420px] truncate text-ink-muted">
+              {t(`sync.task.${progress.task}` as Parameters<typeof t>[0])} · {progress.message}
+            </span>
+            {progress.percent !== null ? (
+              <span className="relative h-1 w-24 overflow-hidden rounded-full bg-surface-2">
+                <span
+                  className="absolute inset-y-0 left-0 bg-primary"
+                  style={{ width: `${progress.percent}%` }}
+                />
+              </span>
+            ) : null}
+          </span>
+        ) : (
+          <span className="text-ink-tertiary">{t('bottom.task.none')}</span>
+        )}
         <VersionChip />
       </div>
     </footer>

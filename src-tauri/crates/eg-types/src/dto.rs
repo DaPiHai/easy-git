@@ -439,3 +439,51 @@ pub struct ConflictFile {
     pub blocks: Vec<ConflictBlock>,
     pub is_binary: bool,
 }
+
+/// One configured remote (m1-plan R-24 / F-29).
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteInfo {
+    pub name: String,
+    pub url: String,
+    /// Distinct push URL when configured (rare; None means same as url).
+    pub push_url: Option<String>,
+}
+
+/// How pull integrates a fetched upstream (F-27 分叉情况选择).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum SyncStrategy {
+    /// Fast-forward or refuse (git pull --ff-only).
+    FfOnly,
+    /// Merge into the current branch; conflicts land in the wizard (W8).
+    Merge,
+}
+
+/// One line of the 操作时间线 (m1-plan F-28, UI §6.10): reflog entries and
+/// eg-safety operation records merged into a single feed.
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct TimelineEntry {
+    /// Commit oid the entry points at (reflog: id_new; op log: target).
+    pub oid: Option<String>,
+    pub subject: String,
+    /// commit | merge | reset | discard | clean | ref_delete | fetch | other
+    pub kind: String,
+    /// Danger entries get the danger outline (重置/强推/丢弃/删除).
+    pub danger: bool,
+    /// Unix epoch seconds (f64 — specta forbids BigInt-style types).
+    pub time: f64,
+}
+
+/// Availability of the bottom-bar 撤销/重做 buttons (m1-plan R-25).
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct UndoRedoState {
+    /// Op id of the latest non-undone record (undoable), if any.
+    pub undoable_op_id: Option<String>,
+    /// Human label for the undo toast target (e.g. 丢弃修改).
+    pub undoable_label: String,
+    /// True when some undone record exists to replay.
+    pub redoable: bool,
+}

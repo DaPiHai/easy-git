@@ -112,7 +112,7 @@ fn branch_crud_and_recycle_bin() {
 
 #[test]
 fn switch_rejects_dirty_worktree_but_allows_untracked() {
-    let (_dir, mut repo) = init_repo();
+    let (_dir, repo) = init_repo();
     commit_all(&repo, &[], "base", &[("a.txt", "1\n")]);
     refs::create_branch(&repo, "other", None).unwrap();
 
@@ -261,7 +261,7 @@ fn stash_round_trip_lossless() {
 
 #[test]
 fn stash_push_includes_untracked_files() {
-    let (_dir, mut repo) = init_repo();
+    let (_dir, repo) = init_repo();
     commit_all(&repo, &[], "base", &[("a.txt", "1\n")]);
     std::fs::write(repo.workdir().unwrap().join("u.txt"), "untracked\n").unwrap();
     let mut mutable_repo = repo;

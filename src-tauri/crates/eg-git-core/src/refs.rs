@@ -146,6 +146,28 @@ pub fn rename_branch(repo: &Repository, old_name: &str, new_name: &str) -> Resul
 /// Deletes a branch into the recycle bin (R-16): a trash ref keeps the tip
 /// alive and a RefDelete record powers the 撤销 toast. The current branch
 /// cannot be deleted (same as git).
+/// Delete action without the safety record (redo replays this primitive).
+pub fn delete_branch_apply(repo: &Repository, name: &str) -> Result<(), EgError> {
+    let mut branch = repo
+        .find_branch(name, BranchType::Local)
+        .map_err(branch_err("find"))?;
+    if branch.is_head() {
+        return Err(EgError::Internal {
+            context: "不能删除当前所在的分支，请先切换到其他分支".into(),
+        });
+    }
+    let target = branch.get().peel_to_commit().map_err(err("peel"))?.id();
+    let trash_ref = format!(
+        "{}/branch-{}",
+        eg_safety::TRASH_REF_PREFIX,
+        uuid::Uuid::new_v4()
+    );
+    repo.reference(&trash_ref, target, true, &format!("branch:{name}"))
+        .map_err(err("trash"))?;
+    branch.delete().map_err(branch_err("delete"))?;
+    Ok(())
+}
+
 pub fn delete_branch(
     repo: &Repository,
     repo_id: &str,
@@ -178,6 +200,7 @@ pub fn delete_branch(
                 kind: eg_safety::OpKind::RefDelete,
                 paths: vec![name.to_string()],
                 snapshot_ref: Some(trash_ref),
+                target: None,
                 undone: false,
             },
         )
@@ -331,6 +354,25 @@ pub fn create_tag(
 
 /// Deletes a tag into the recycle bin; the 撤销 toast recreates it (R-17).
 /// Annotated tags stay annotated: the trash ref keeps the tag object id.
+/// Delete action without the safety record (redo replays this primitive).
+pub fn delete_tag_apply(repo: &Repository, name: &str) -> Result<(), EgError> {
+    let mut reference = repo
+        .find_reference(&format!("refs/tags/{name}"))
+        .map_err(err("find tag"))?;
+    let target = reference.target().ok_or_else(|| EgError::Internal {
+        context: "tag reference has no direct target".into(),
+    })?;
+    let trash_ref = format!(
+        "{}/tag-{}",
+        eg_safety::TRASH_REF_PREFIX,
+        uuid::Uuid::new_v4()
+    );
+    repo.reference(&trash_ref, target, true, &format!("tag:{name}"))
+        .map_err(err("trash"))?;
+    reference.delete().map_err(err("delete"))?;
+    Ok(())
+}
+
 pub fn delete_tag(
     repo: &Repository,
     repo_id: &str,
@@ -360,6 +402,7 @@ pub fn delete_tag(
                 kind: eg_safety::OpKind::RefDelete,
                 paths: vec![name.to_string()],
                 snapshot_ref: Some(trash_ref),
+                target: None,
                 undone: false,
             },
         )
@@ -368,4 +411,39 @@ pub fn delete_tag(
         })?;
     reference.delete().map_err(err("delete"))?;
     Ok(op_id)
+}
+
+/// Sets (or clears with None) the upstream of a local branch (W7 顺延,
+/// m1-plan W9): `git branch --set-upstream-to=origin/<x> <branch>`.
+pub fn set_branch_upstream(
+    repo: &Repository,
+    branch: &str,
+    upstream: Option<&str>,
+) -> Result<(), EgError> {
+    let mut b = repo
+        .find_branch(branch, BranchType::Local)
+        .map_err(branch_err("find"))?;
+    b.set_upstream(upstream)
+        .map_err(branch_err("set upstream"))?;
+    Ok(())
+}
+
+/// Remote branch short names (`git branch -r` without HEAD entries) for the
+/// set-upstream dialog.
+pub fn list_remote_branches(repo: &Repository) -> Result<Vec<String>, EgError> {
+    let mut out = Vec::new();
+    let refs = repo
+        .references_glob("refs/remotes/*")
+        .map_err(err("list"))?;
+    for reference in refs {
+        let Ok(reference) = reference else { continue };
+        let Ok(full) = reference.name() else { continue };
+        let short = full.strip_prefix("refs/remotes/").unwrap_or(full);
+        if short.ends_with("/HEAD") {
+            continue;
+        }
+        out.push(short.to_string());
+    }
+    out.sort();
+    Ok(out)
 }

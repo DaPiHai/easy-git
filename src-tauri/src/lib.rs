@@ -59,8 +59,27 @@ pub fn run() {
             commands::conflict_resolve,
             commands::revert_commits,
             commands::reset_commits,
+            commands::sync_fetch,
+            commands::sync_pull,
+            commands::sync_push,
+            commands::remote_test,
+            commands::repo_clone,
+            commands::remote_list,
+            commands::remote_add,
+            commands::remote_rename,
+            commands::remote_remove,
+            commands::remote_set_url,
+            commands::redo_operation,
+            commands::timeline_get,
+            commands::timeline_restore,
+            commands::branch_set_upstream,
+            commands::undo_redo_state,
+            commands::remote_branch_list,
         ])
-        .events(collect_events![events::RepoChanged])
+        .events(collect_events![
+            events::RepoChanged,
+            events::SyncProgressEvent
+        ])
         .error_handling(ErrorHandlingMode::Result);
 
     // Regenerate TS bindings on every debug launch so they can never drift.

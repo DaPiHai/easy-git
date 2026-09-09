@@ -3,7 +3,8 @@ import { getAppVersion } from '../lib/ipc/commands';
 
 export type ThemeMode = 'system' | 'light' | 'dark';
 export type ResolvedTheme = 'light' | 'dark';
-export type MainView = 'changes' | 'history' | 'branches' | 'storage' | 'settings';
+export type MainView =
+  'changes' | 'history' | 'branches' | 'storage' | 'timeline' | 'remotes' | 'settings';
 
 export const THEME_MODE_STORAGE_KEY = 'eg.theme.mode';
 export const EXPERT_MODE_STORAGE_KEY = 'eg.mode.expert';

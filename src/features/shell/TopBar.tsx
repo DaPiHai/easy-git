@@ -1,22 +1,19 @@
-import {
-  ArrowDownToLine,
-  ArrowUpToLine,
-  CloudDownload,
-  PanelRight,
-  Search,
-  Settings,
-} from 'lucide-react';
+import { PanelRight, Search, Settings } from 'lucide-react';
 import { t } from '../../lib/i18n';
 import { useUiStore, type MainView } from '../../stores/uiStore';
+import { useRepoStore } from '../../stores/repoStore';
 import { Button } from '../../components/Button';
 import { ThemeToggle } from './ThemeToggle';
 import { RepoSwitcher } from '../repo/RepoSwitcher';
+import { SyncButtons } from './SyncButtons';
 
 const mainViews: { id: MainView; labelKey: Parameters<typeof t>[0] }[] = [
   { id: 'changes', labelKey: 'tab.changes' },
   { id: 'history', labelKey: 'tab.history' },
   { id: 'branches', labelKey: 'tab.branches' },
   { id: 'storage', labelKey: 'tab.storage' },
+  { id: 'timeline', labelKey: 'tab.timeline' },
+  { id: 'remotes', labelKey: 'tab.remotes' },
 ];
 
 /**
@@ -28,6 +25,7 @@ export function TopBar() {
   const setView = useUiStore((s) => s.setView);
   const detailOpen = useUiStore((s) => s.detailOpen);
   const toggleDetail = useUiStore((s) => s.toggleDetail);
+  const hasActiveRepo = useRepoStore((s) => s.activeId !== null);
 
   return (
     <header
@@ -56,20 +54,9 @@ export function TopBar() {
         })}
       </nav>
 
-      {/* Sync group + search — wired up in W9 / W7. */}
+      {/* Sync group (F-27, live since W9) + search. */}
       <div className="flex items-center gap-1">
-        <Button variant="tertiary" size="sm" disabled data-testid="sync-fetch">
-          <CloudDownload className="size-4" aria-hidden />
-          {t('sync.fetch')}
-        </Button>
-        <Button variant="tertiary" size="sm" disabled>
-          <ArrowDownToLine className="size-4" aria-hidden />
-          {t('sync.pull')}
-        </Button>
-        <Button variant="tertiary" size="sm" disabled>
-          <ArrowUpToLine className="size-4" aria-hidden />
-          {t('sync.push')}
-        </Button>
+        <SyncButtons hasActiveRepo={hasActiveRepo} />
         <ThemeToggle />
         <Button variant="tertiary" size="sm" disabled aria-label={t('topbar.search')}>
           <Search className="size-4" aria-hidden />

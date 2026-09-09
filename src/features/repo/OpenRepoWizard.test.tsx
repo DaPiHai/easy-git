@@ -12,13 +12,16 @@ beforeEach(() => {
 });
 
 describe('OpenRepoWizard', () => {
-  it('renders the three entries, clone disabled with a coming-soon badge', () => {
+  it('renders the three entries; clone opens the live 克隆 dialog (W9)', async () => {
+    const user = userEvent.setup();
     render(<OpenRepoWizard />);
     expect(screen.getByText('打开本地仓库')).toBeInTheDocument();
     expect(screen.getByText('新建仓库')).toBeInTheDocument();
     const clone = screen.getByTestId('wizard-clone');
-    expect(clone).toBeDisabled();
-    expect(screen.getByText('即将推出')).toBeInTheDocument();
+    expect(clone).toBeEnabled();
+    await user.click(clone);
+    expect(screen.getByTestId('clone-url-input')).toBeInTheDocument();
+    expect(screen.getByTestId('clone-path-input')).toBeInTheDocument();
   });
 
   it('lists recent repositories for one-click opening', async () => {

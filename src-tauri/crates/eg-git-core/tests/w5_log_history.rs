@@ -59,7 +59,7 @@ struct Diamond {
 
 fn build_diamond(repo: &Repository) -> Diamond {
     let base = commit_on(
-        &repo,
+        repo,
         &[],
         "HEAD",
         "base",
@@ -68,7 +68,7 @@ fn build_diamond(repo: &Repository) -> Diamond {
         &[("f.txt", "1\n")],
     );
     let m1 = commit_on(
-        &repo,
+        repo,
         &[&base],
         "HEAD",
         "main step",

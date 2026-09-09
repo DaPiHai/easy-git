@@ -7,13 +7,13 @@ use eg_safety::Safety;
 use eg_types::{
     AppVersion, BranchInfo, CommitDetail, CommitOutcome, CommitRequest, ConfigScope, ConflictFile,
     DiffRequest, DiffResponse, EgError, IgnoreMode, LogFilter, LogPage, MergeOutcome, MergeState,
-    RepoSummary, ResetMode, ResetOutcome, StageLinesRequest, StageMode, StashEntry, StatusReport,
-    TagInfo,
+    RemoteInfo, RepoSummary, ResetMode, ResetOutcome, StageLinesRequest, StageMode, StashEntry,
+    StatusReport, SyncStrategy, TagInfo, TimelineEntry, UndoRedoState,
 };
 use tauri::{AppHandle, State};
 use tauri_specta::Event;
 
-use crate::events::RepoChanged;
+use crate::events::{RepoChanged, SyncProgressEvent};
 
 /// Sample command proving the tauri-specta pipeline end to end (F-01).
 #[tauri::command]
@@ -500,6 +500,301 @@ pub async fn reset_commits(
     let handle = manager.get(&repo_id)?;
     let safety = std::sync::Arc::new(safety.inner().clone());
     run_blocking(move || handle.reset(mode, target, safety)).await
+}
+
+/// Streams `git --progress` lines from a blocking network task to the sync
+/// task strip, then emits the final event (m1-plan R-22/F-27).
+fn sync_progress_sink(
+    app: &AppHandle,
+    repo_id: String,
+    task: &'static str,
+) -> (
+    std::sync::mpsc::Sender<eg_git_core::remote::SyncProgress>,
+    tauri::async_runtime::JoinHandle<()>,
+) {
+    let handle = app.clone();
+    let (tx, rx) = std::sync::mpsc::channel::<eg_git_core::remote::SyncProgress>();
+    let join = tauri::async_runtime::spawn(async move {
+        while let Ok(progress) = rx.recv() {
+            let _ = SyncProgressEvent::new(
+                repo_id.clone(),
+                task,
+                progress.message,
+                progress.percent,
+                false,
+            )
+            .emit(&handle);
+        }
+    });
+    (tx, join)
+}
+
+async fn finish_progress_sink(
+    app: &AppHandle,
+    repo_id: String,
+    task: &'static str,
+    join: tauri::async_runtime::JoinHandle<()>,
+    ok: bool,
+) {
+    let _ = SyncProgressEvent::new(repo_id, task, if ok { "完成" } else { "失败" }, None, true)
+        .emit(app);
+    let _ = join.await;
+}
+
+/// Fetches a remote (m1-plan R-22): CLI with live progress, then a worker
+/// status refresh (fs-watch also fires from the ref updates).
+#[tauri::command]
+#[specta::specta]
+pub async fn sync_fetch(
+    app: AppHandle,
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+    remote: String,
+    prune: bool,
+) -> Result<StatusReport, EgError> {
+    let handle = manager.get(&repo_id)?;
+    let path = handle.canonical_path.clone();
+    let (tx, join) = sync_progress_sink(&app, repo_id.clone(), "fetch");
+    let result =
+        run_blocking(move || eg_git_core::remote::fetch_at(&path, &remote, prune, Some(&tx))).await;
+    finish_progress_sink(&app, repo_id, "fetch", join, result.is_ok()).await;
+    result?;
+    run_blocking(move || handle.request_status()).await
+}
+
+/// Pulls (R-22/F-27): CLI fetch with progress, then the W8 merge machinery
+/// integrates the upstream — conflicts land in the wizard, ff-only refuses
+/// divergence so the 分叉情况选择 can offer a merge.
+#[tauri::command]
+#[specta::specta]
+pub async fn sync_pull(
+    app: AppHandle,
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+    remote: String,
+    branch: String,
+    strategy: SyncStrategy,
+) -> Result<MergeOutcome, EgError> {
+    let handle = manager.get(&repo_id)?;
+    let path = handle.canonical_path.clone();
+    let (tx, join) = sync_progress_sink(&app, repo_id.clone(), "pull");
+    let fetch_remote = remote.clone();
+    let fetched =
+        run_blocking(move || eg_git_core::remote::fetch_at(&path, &fetch_remote, false, Some(&tx)))
+            .await;
+    finish_progress_sink(&app, repo_id, "pull", join, fetched.is_ok()).await;
+    fetched?;
+    run_blocking(move || handle.pull_integrate(remote, branch, strategy)).await
+}
+
+/// Pushes the current branch (R-22). Force pushes record the pre-push remote
+/// tip in eg-safety first (强推可回滚): undo pushes the old tip back.
+#[tauri::command]
+#[specta::specta]
+pub async fn sync_push(
+    app: AppHandle,
+    manager: State<'_, RepoManager>,
+    safety: State<'_, Safety>,
+    repo_id: String,
+    remote: String,
+    branch: String,
+    force: bool,
+) -> Result<StatusReport, EgError> {
+    let handle = manager.get(&repo_id)?;
+    let path = handle.canonical_path.clone();
+    let safety = std::sync::Arc::new(safety.inner().clone());
+    let (tx, join) = sync_progress_sink(&app, repo_id.clone(), "push");
+    let safety_for_task = safety.clone();
+    let push_repo_id = repo_id.clone();
+    let result = run_blocking(move || {
+        eg_git_core::remote::push_with_rollback(
+            &path,
+            &push_repo_id,
+            &remote,
+            &branch,
+            force,
+            &safety_for_task,
+            Some(&tx),
+        )
+    })
+    .await;
+    finish_progress_sink(&app, repo_id, "push", join, result.is_ok()).await;
+    result?;
+    run_blocking(move || handle.request_status()).await
+}
+
+/// Connectivity test (R-24): `git ls-remote`, reports ref count.
+#[tauri::command]
+#[specta::specta]
+pub async fn remote_test(
+    app: AppHandle,
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+    remote: String,
+) -> Result<u32, EgError> {
+    let handle = manager.get(&repo_id)?;
+    let path = handle.canonical_path.clone();
+    let (tx, join) = sync_progress_sink(&app, repo_id.clone(), "test");
+    let result =
+        run_blocking(move || eg_git_core::remote::test_remote(&path, &remote, Some(&tx))).await;
+    finish_progress_sink(&app, repo_id, "test", join, result.is_ok()).await;
+    result
+}
+
+/// Clones a repository (W2 顺延 + m1-plan R-22), then opens it (F-06 clone 入口).
+#[tauri::command]
+#[specta::specta]
+pub async fn repo_clone(
+    app: AppHandle,
+    manager: State<'_, RepoManager>,
+    url: String,
+    path: String,
+) -> Result<RepoSummary, EgError> {
+    let (tx, join) = sync_progress_sink(&app, "clone".to_string(), "clone");
+    let clone_path = path.clone();
+    let result = run_blocking(move || {
+        eg_git_core::remote::clone_repo(&url, std::path::Path::new(&clone_path), Some(&tx))
+    })
+    .await;
+    finish_progress_sink(&app, "clone".to_string(), "clone", join, result.is_ok()).await;
+    result?;
+    manager.open(std::path::Path::new(&path), change_sink(&app))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn remote_list(
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+) -> Result<Vec<RemoteInfo>, EgError> {
+    let handle = manager.get(&repo_id)?;
+    run_blocking(move || handle.remote_list()).await
+}
+
+/// Adds a remote (R-24); the summary refreshes via fs-watch.
+#[tauri::command]
+#[specta::specta]
+pub async fn remote_add(
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+    name: String,
+    url: String,
+) -> Result<(), EgError> {
+    let handle = manager.get(&repo_id)?;
+    run_blocking(move || handle.remote_add(name, url)).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn remote_rename(
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+    old_name: String,
+    new_name: String,
+) -> Result<(), EgError> {
+    let handle = manager.get(&repo_id)?;
+    run_blocking(move || handle.remote_rename(old_name, new_name).map(|_| ())).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn remote_remove(
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+    name: String,
+) -> Result<(), EgError> {
+    let handle = manager.get(&repo_id)?;
+    run_blocking(move || handle.remote_remove(name)).await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn remote_set_url(
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+    name: String,
+    url: String,
+) -> Result<(), EgError> {
+    let handle = manager.get(&repo_id)?;
+    run_blocking(move || handle.remote_set_url(name, url)).await
+}
+
+/// Redoes the most recent undone operation (R-25 撤销/重做引擎).
+#[tauri::command]
+#[specta::specta]
+pub async fn redo_operation(
+    manager: State<'_, RepoManager>,
+    safety: State<'_, Safety>,
+    repo_id: String,
+) -> Result<DiscardOutcome, EgError> {
+    let handle = manager.get(&repo_id)?;
+    let safety = std::sync::Arc::new(safety.inner().clone());
+    run_blocking(move || handle.redo(safety)).await
+}
+
+/// 操作时间线 (m1-plan F-28): reflog + safety op log merged, newest first.
+#[tauri::command]
+#[specta::specta]
+pub async fn timeline_get(
+    manager: State<'_, RepoManager>,
+    safety: State<'_, Safety>,
+    repo_id: String,
+    limit: Option<u32>,
+) -> Result<Vec<TimelineEntry>, EgError> {
+    let handle = manager.get(&repo_id)?;
+    let safety = std::sync::Arc::new(safety.inner().clone());
+    run_blocking(move || handle.timeline(limit.unwrap_or(100), safety)).await
+}
+
+/// 恢复到此状态 (F-28): snapshot-protected hard reset to a timeline entry.
+#[tauri::command]
+#[specta::specta]
+pub async fn timeline_restore(
+    manager: State<'_, RepoManager>,
+    safety: State<'_, Safety>,
+    repo_id: String,
+    oid: String,
+) -> Result<ResetOutcome, EgError> {
+    let handle = manager.get(&repo_id)?;
+    let safety = std::sync::Arc::new(safety.inner().clone());
+    run_blocking(move || handle.restore_to(oid, safety)).await
+}
+
+/// Sets (or clears) a branch's upstream (W7 顺延, m1-plan W9).
+#[tauri::command]
+#[specta::specta]
+pub async fn branch_set_upstream(
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+    branch: String,
+    upstream: Option<String>,
+) -> Result<BranchInfo, EgError> {
+    let handle = manager.get(&repo_id)?;
+    run_blocking(move || handle.branch_set_upstream(branch, upstream)).await
+}
+
+/// Bottom-bar 撤销/重做 availability (m1-plan R-25).
+#[tauri::command]
+#[specta::specta]
+pub async fn undo_redo_state(
+    manager: State<'_, RepoManager>,
+    safety: State<'_, Safety>,
+    repo_id: String,
+) -> Result<UndoRedoState, EgError> {
+    let handle = manager.get(&repo_id)?;
+    let safety = std::sync::Arc::new(safety.inner().clone());
+    run_blocking(move || handle.undo_state(safety)).await
+}
+
+/// Remote branch short names for the set-upstream dialog.
+#[tauri::command]
+#[specta::specta]
+pub async fn remote_branch_list(
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+) -> Result<Vec<String>, EgError> {
+    let handle = manager.get(&repo_id)?;
+    run_blocking(move || handle.remote_branch_list()).await
 }
 
 async fn run_blocking<T, F>(f: F) -> Result<T, EgError>

@@ -12,9 +12,9 @@ pub use dto::{
     AppVersion, BranchInfo, ChangeEntry, ChangeKind, CommitDetail, CommitFile, CommitLogEntry,
     CommitOutcome, CommitRefs, CommitRequest, ConfigScope, ConflictBlock, ConflictFile, DiffHunk,
     DiffLine, DiffLineKind, DiffRequest, DiffResponse, DiffSourceKind, GraphLine, GraphNode,
-    IgnoreMode, LogFilter, LogPage, MergeOutcome, MergeState, RepoId, RepoSummary, ResetMode,
-    ResetOutcome, SelectedHunk, StageLinesRequest, StageMode, StashEntry, StatusReport, TagInfo,
-    WordSpan,
+    IgnoreMode, LogFilter, LogPage, MergeOutcome, MergeState, RemoteInfo, RepoId, RepoSummary,
+    ResetMode, ResetOutcome, SelectedHunk, StageLinesRequest, StageMode, StashEntry, StatusReport,
+    SyncStrategy, TagInfo, TimelineEntry, UndoRedoState, WordSpan,
 };
 
 #[cfg(test)]

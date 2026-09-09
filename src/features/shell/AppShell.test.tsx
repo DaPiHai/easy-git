@@ -32,11 +32,18 @@ vi.mock('../../lib/ipc/commands', () => ({
   commitIndex: vi.fn(),
   getConfig: vi.fn(async () => 'tester'),
   setConfig: vi.fn(async () => undefined),
+  events: {
+    repoChanged: { listen: vi.fn(async () => () => undefined) },
+    syncProgress: { listen: vi.fn(async () => () => undefined) },
+  },
 }));
 
 vi.mock('../../lib/ipc/bindings', () => ({
   events: {
     repoChanged: {
+      listen: vi.fn(async () => () => undefined),
+    },
+    syncProgress: {
       listen: vi.fn(async () => () => undefined),
     },
   },

@@ -190,5 +190,4 @@ describe('HistoryPage (F-15/F-16/F-17)', () => {
     render(<HistoryPage />);
     expect(screen.getByText('还没有任何提交')).toBeInTheDocument();
   });
-
 });

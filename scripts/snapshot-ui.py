@@ -531,6 +531,62 @@ STATES = [
         window.__eg.uiStore.getState().setView('changes');
       }})()
     """, "48-light-conflict-wizard.png"),
+    # ---- W9: sync buttons (F-27) / remotes page (F-29) / timeline (F-28) ----
+    (f"""
+      (() => {{
+        // State 48 left the light theme and a merge takeover; reset both.
+        document.querySelector('[data-testid="theme-dark"]').click();
+        window.__eg.mergeStore.setState({{ mergeState: null, conflicts: [], knownPaths: [] }});
+        window.__eg.syncStore.setState({{
+          remotes: [
+            {{ name: 'origin', url: 'https://github.com/DaPiHai/easy-git.git', pushUrl: null }},
+          ],
+          remoteBranches: ['origin/main', 'origin/feature/dag-render'],
+          progress: {{ task: 'fetch', message: 'Receiving objects: 45% (90/200)', percent: 45 }},
+        }});
+        window.__eg.uiStore.getState().setView('changes');
+      }})()
+    """, "50-dark-sync-buttons-progress.png"),
+    ("""
+      (() => {
+        window.__eg.mergeStore.setState({ mergeState: null, conflicts: [], knownPaths: [] });
+        window.__eg.uiStore.getState().setView('remotes');
+      })()
+    """, "51-dark-remotes-page.png"),
+    ("""
+      (() => {
+        [...document.querySelectorAll('button')].find((b) => b.textContent.includes('添加远程')).click();
+      })()
+    """, "52-dark-remote-add-dialog.png"),
+    ("""
+      (() => {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        const now = Math.floor(Date.now() / 1000);
+        window.__eg.syncStore.setState({
+          remotes: [{ name: 'origin', url: 'https://github.com/DaPiHai/easy-git.git', pushUrl: null }],
+          timeline: [
+            { oid: 'c0f0e12abcd', subject: 'commit: 接入同步任务条', kind: 'commit', danger: false, time: now - 120 },
+            { oid: null, subject: '丢弃修改（2 个路径）', kind: 'discard', danger: true, time: now - 600 },
+            { oid: 'c0f0e12abcd', subject: 'merge: 合并 feature/dag-render', kind: 'merge', danger: false, time: now - 1800 },
+            { oid: 'c0f0e12abcd', subject: '重置', kind: 'reset', danger: true, time: now - 3600 },
+          ],
+        });
+        window.__eg.uiStore.getState().setView('timeline');
+      })()
+    """, "53-dark-timeline.png"),
+    ("""
+      (() => {
+        // Entry 1 has no oid (op rows without one carry no restore button).
+        document.querySelector('[data-testid="timeline-restore-3"]').click();
+      })()
+    """, "55-dark-restore-dialog.png"),
+    ("""
+      (() => {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        document.querySelector('[data-testid="theme-light"]').click();
+        window.__eg.uiStore.getState().setView('remotes');
+      })()
+    """, "57-light-remotes.png"),
 ]
 
 class Snapper:

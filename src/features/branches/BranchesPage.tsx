@@ -10,13 +10,14 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Badge, Dialog, EmptyState } from '../../components';
+import { Badge, Button, Dialog, EmptyState } from '../../components';
 import { t } from '../../lib/i18n';
 import { authorInitial, formatRelativeTime } from '../../lib/time';
 import type { BranchInfo } from '../../lib/ipc/commands';
 import { useMergeStore } from '../../stores/mergeStore';
 import { useRepoStore } from '../../stores/repoStore';
 import { useRefStore } from '../../stores/refsStore';
+import { useSyncStore } from '../../stores/syncStore';
 
 const menuItemContentClass =
   'z-50 min-w-44 rounded-lg border border-hairline bg-surface-3 p-1 shadow-[var(--eg-shadow-dialog)]';
@@ -29,6 +30,7 @@ type BranchDialog =
   | { kind: 'delete'; name: string }
   | { kind: 'dirty'; name: string }
   | { kind: 'merge'; name: string; current: string }
+  | { kind: 'upstream'; name: string }
   | null;
 
 /**
@@ -104,6 +106,9 @@ export function BranchesPage() {
           current={dialog.current}
           onClose={() => setDialog(null)}
         />
+      ) : null}
+      {dialog?.kind === 'upstream' ? (
+        <UpstreamDialog open name={dialog.name} onClose={() => setDialog(null)} />
       ) : null}
     </div>
   );
@@ -217,9 +222,87 @@ function BranchRow({
               {t('branch.delete')}
             </ContextMenu.Item>
           ) : null}
+          <ContextMenu.Item
+            className={menuItemClass}
+            onSelect={() => onDialog({ kind: 'upstream', name: branch.name })}
+          >
+            <ArrowUpRight className="size-3.5" aria-hidden />
+            {t('remotes.setUpstream')}
+          </ContextMenu.Item>
         </ContextMenu.Content>
       </ContextMenu.Portal>
     </ContextMenu.Root>
+  );
+}
+
+/**
+ * 上游设置 (W7 顺延, m1-plan W9): pick a remote branch (origin/main style)
+ * or clear the tracking relationship entirely.
+ */
+function UpstreamDialog({
+  open,
+  name,
+  onClose,
+}: {
+  open: boolean;
+  name: string;
+  onClose: () => void;
+}) {
+  const remoteBranches = useSyncStore((s) => s.remoteBranches);
+  const setUpstream = useSyncStore((s) => s.setUpstream);
+  const branches = useRefStore((s) => s.branches);
+  const current = branches.find((b) => b.name === name);
+  const [selection, setSelection] = useState('');
+
+  const submit = async () => {
+    const ok = await setUpstream(name, selection === '' ? null : selection || null);
+    if (ok) onClose();
+  };
+
+  return (
+    <Dialog
+      open={open}
+      title={t('remotes.setUpstream')}
+      onClose={onClose}
+      actions={
+        <>
+          {current?.upstream ? (
+            <Button
+              variant="secondary"
+              data-testid="upstream-unset"
+              onClick={() => void setUpstream(name, null).then((ok) => ok && onClose())}
+            >
+              {t('remotes.unsetUpstream')}
+            </Button>
+          ) : null}
+          <Button variant="secondary" onClick={onClose}>
+            {t('dialog.cancel')}
+          </Button>
+          <Button variant="primary" data-testid="upstream-confirm" onClick={() => void submit()}>
+            {t('dialog.confirm')}
+          </Button>
+        </>
+      }
+    >
+      <p className="mb-2 text-caption text-ink-muted">
+        {name} · {t('remotes.upstream')}：
+        <span className="font-mono">{current?.upstream ?? t('remotes.none')}</span>
+      </p>
+      <select
+        value={selection}
+        onChange={(e) => setSelection(e.target.value)}
+        data-testid="upstream-select"
+        aria-label={t('remotes.upstreamPlaceholder')}
+        className="h-8 w-full rounded-md border border-hairline-strong bg-surface-2 px-eg-2 text-secondary text-ink outline-none focus:border-primary"
+      >
+        <option value="">{t('remotes.upstreamPlaceholder')}</option>
+        {remoteBranches.map((rb) => (
+          <option key={rb} value={rb}>
+            {rb}
+          </option>
+        ))}
+      </select>
+    </Dialog>
   );
 }
 

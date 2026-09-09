@@ -10,6 +10,9 @@ import { TopBar } from './TopBar';
 import { OpenRepoWizard } from '../repo/OpenRepoWizard';
 import { ConflictWizard } from '../conflicts/ConflictWizard';
 import { useMergeStore } from '../../stores/mergeStore';
+import { useSyncStore } from '../../stores/syncStore';
+import { TimelinePage } from '../timeline/TimelinePage';
+import { RemotesPage } from '../remotes/RemotesPage';
 import { ChangesPage } from '../changes/ChangesPage';
 import { HistoryPage } from '../history/HistoryPage';
 import { BranchesPage } from '../branches/BranchesPage';
@@ -39,6 +42,12 @@ export function AppShell() {
   // Track the parked-merge state alongside every status refresh (fs-watch).
   useEffect(() => {
     void useMergeStore.getState().poll();
+  }, [hasActiveRepo, status]);
+
+  // W9: sync progress subscription + remotes/undo-redo state tracking.
+  useEffect(() => useSyncStore.getState().init(), []);
+  useEffect(() => {
+    void useSyncStore.getState().refresh();
   }, [hasActiveRepo, status]);
 
   // Ctrl/Cmd+K quick switcher (F-05 prototype).
@@ -72,6 +81,8 @@ export function AppShell() {
               {view === 'history' && <HistoryPage />}
               {view === 'branches' && <BranchesPage />}
               {view === 'storage' && <StoragePage />}
+              {view === 'timeline' && <TimelinePage />}
+              {view === 'remotes' && <RemotesPage />}
             </>
           )}
         </main>

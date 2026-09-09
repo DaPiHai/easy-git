@@ -318,3 +318,20 @@ IPC 序列化为 `{code, params, message_zh, hint?}`；前端 `lib/ipc/errors.ts
 | 9 | merge 安全默认 | 分支板右键「合并…」对话框默认快进优先，「总是创建合并提交（no-ff）」为可选勾选（F-26 简洁模式默认）；合并中 CommitBox 预填合并消息且输入框禁用（渲染期状态调整模式，规避 setState-in-effect lint）。 |
 | 10 | 冒烟与验收 | deb 安装后以 AT-SPI 无障碍树驱动真机（scrot 在 WSLg 抓屏全黑，弃用坐标盲操）：feature-flow-conflicted（真实 git CLI 停车）→ 向导接管 → 用我的 → 解决此文件 → 完成合并 → 双亲合并提交落盘、MERGE_HEAD 清除；重建 fixture 后 中止合并 → 工作区/HEAD 完全复原。14 张 W8 快照 judge 12 页全过。 |
 | 11 | 测试与已知问题 | Rust +12（ff/no-ff/干净分叉/停车/中止/块解析+双亲收尾/revert 单·多·回滚/reset 三模式/hard 撤销/已合并 noop+脏区拒绝），前端 +13（mergeStore 9、ConflictWizard 8、composeContent；Radix 右键菜单在 jsdom 挂死不可测，菜单接线由真机冒烟覆盖）。快照 harness 换 ephemeral WebKit context（旧缓存曾致 `__eg.mergeStore` 缺失）+ JS 错误可见化；f-string 注入 JS 的 `{{}}`/`\n` 转义为易错点。 |
+
+### 2026-09-09 · W9 远程与安全网偏差记录
+
+| # | 条目 | 说明 |
+| --- | --- | --- |
+| 1 | 网络操作走 CLI | GitCli 封装 `git -C <workdir>`（TDD §4 混合模型）：run() 返回 (输出, 是否成功)——早期只探 git 存在性的 quick_status 无法区分命令失败，fetch/push 静默假成功风险由此堵住。fetch 支持 `--prune`/`--depth`（R-24/R-22 浅获取入口在核心层）。 |
+| 2 | 进度管道 | CLI `--progress` stderr 逐行解析（Receiving/Resolving xx% (a/b)）→ mpsc → `sync://progress` 事件 → 底部任务条（task/message/percent）。进度发射在 tauri async_runtime::spawn 中转发，命令结束发 done 收尾。 |
+| 3 | 强推回滚 | push_with_rollback：force 时**先 fetch**（刷新 lease 基线，否则 --force-with-lease 报 stale info）+ ls-remote 取远端旧 tip → 先写 eg-safety 记录（OpKind::ForcePush，paths=[分支, 远端旧tip, 远端名]）→ 再推。撤销 = `push_restore` 把旧 tip 强推回去（远端备份可回滚，R-22 退出标准）。 |
+| 4 | pull 集成 | CLI fetch（带进度）+ worker `pull_integrate`（libgit2）：ff_only 遇分叉报 ConflictState（文案含「分叉」，ahead/behind 计数）；前端映射为分叉对话框（F-27）——「合并远端提交」复用 W8 合并管线（冲突进向导），「变基」置灰（即将推出）。merge_start 的目标解析扩展为 refs/heads/{name} → {name} → refs/remotes/{name} 全名匹配。 |
+| 5 | 撤销/重做引擎 | R-25「引用快照树」定案（PRD §10.2 已决策）：OpRecord 增加 target 与 undone 字段。撤销打 undone 标记；**重做 = 重放原语 + 重新激活原记录（同 op_id、undone=false）**，避免每次 redo 生成新记录导致无限重做；Reset 重做委托 reset_with_record（先照原样记录再重放）。各原语拆出 *_apply（discard/clean/delete_branch/delete_tag）供重做复用。 |
+| 6 | reset 快照时序 | W8 版在 repo.reset 之后才建快照——快到的是重置后内容，撤销等于没撤销。重构为 reset_plan（变更路径 + 原 tip + 目标，均在变更前取）→ reset_with_record（先快照后 reset）。教训写进 W8 表 #6 的修正。 |
+| 7 | 远程管理 | R-24：libgit2 remote CRUD + 重命名/改址 + ls-remote 连通性测试；分支板上游设置（W7 顺延）= set_branch_upstream。fork 坑：`StringArray::iter()` 产出 `Result<Option<&str>>`；`remote_rename` 在 Repository 上；`remote.url()` 返回 Result。 |
+| 8 | 时间线 | F-28：HEAD reflog 分类（classify_reflog）+ eg-safety 操作日志合并去重排序（time 用 f64——specta 禁 i64/u64）。危险类（reset/discard/clean/ref_delete/force_push/rebase）红环 + danger 色；行 hover 出「恢复到此状态」= 快照保护的硬重置（红色确认）。重置条目 subject 只写「重置」，目标 oid 由右侧 chip 显示（避免 oid 重复）。 |
+| 9 | R-23 凭据偏差 | keyring 集成 / HTTPS token 托管不做：凭据完全交给系统 git 凭据基础设施（credential helper / SSH agent / store），EasyGit 不接触、不存储任何密钥（CLI 子进程天然继承）。身份配置已在 W4 设置页落地（global user.name/email）。keyring 内建托管顺延 M2 并已同步 PRD 待议。 |
+| 10 | 分层纠偏 | sync 命令初版把 git2/uuid 拉进了 app crate（违反 TDD §3 边界）——重构为 eg_git_core::remote 高层入口（fetch_at/push_with_rollback/clone_repo 等），app crate 回归纯 IPC 编排。绑定新增 17 命令 + SyncProgressEvent，两处注册清单同步。 |
+| 11 | 冒烟与验收 | 本地 bare origin 三仓 fixture（server.git/peer/work），deb 真机 AT-SPI：获取（origin/main 前移）→ 拉取遇分叉 → 分叉对话框「合并远端提交」→ 双亲合并提交 → 推送（server 前移）→ peer 分叉后推送被拒 → 强推对话框 → 远端重写 → 底栏撤销 → **远端恢复旧 tip（强推可回滚）** → 时间线 hover「恢复到此状态」→ 硬重置 + 快照 ref 落盘 → 再撤销 → main 回到合并提交。W9 退出标准全过。 |
+| 12 | 冒烟坑 | 本环境 AT-SPI 按钮角色名是 `button` 而非 `push button`（按后者的 find/dump 全部落空）；toast 在 AT-SPI 树不可见（不可靠信号，改验 git 落盘状态）；对话框在树中可按标题定位（radix dialog role）。xdotool 看不见 Wayland 客户端——需 `GDK_BACKEND=x11` 重启应用才能 hover（时间线恢复按钮是 hover-only）。`pkill -f easy-git` 会自杀（bash -c 命令行含模式串），用 `pkill -x`。快照脚本：W8 末态残留 light 主题传染 W9 状态（51/57 两张 md5 相同暴露）——每个主题态显式点击 theme-dark/light + 清 mergeStore 接管。 |

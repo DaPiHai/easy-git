@@ -57,6 +57,48 @@ pub fn stage(repo: &Repository, paths: &[String], mode: StageMode) -> Result<(),
 /// + restore-from-index + delete-untracked normalizes every path to HEAD.
 ///
 /// Returns the op id for undo (`undo_operation`).
+/// Discard action without the safety record (redo replays this primitive).
+pub fn discard_apply(repo: &Repository, paths: &[String]) -> Result<(), EgError> {
+    let inner = || -> Result<(), EgError> {
+        // 1. Index := HEAD for every path (no-op when unborn).
+        stage(repo, paths, StageMode::Unstage)?;
+
+        // 2. Normalize the worktree to the (freshly reset) index.
+        let report = status::status("discard", repo)?;
+        for path in paths {
+            let entry = find_entry(&report, path);
+            let clean = normalize(path);
+            let abs = repo
+                .workdir()
+                .ok_or_else(|| EgError::NotSupported {
+                    feature: "bare repository discard".into(),
+                })?
+                .join(clean);
+            match entry.map(|e| e.kind) {
+                Some(ChangeKind::Untracked) => {
+                    if abs.is_dir() {
+                        fs::remove_dir_all(&abs).map_err(fs_err("remove untracked dir"))?;
+                    } else if abs.is_file() {
+                        fs::remove_file(&abs).map_err(fs_err("remove untracked file"))?;
+                    }
+                }
+                Some(ChangeKind::Modified | ChangeKind::Deleted | ChangeKind::Renamed) => {
+                    let mut builder = CheckoutBuilder::new();
+                    builder.force().update_index(true).path(clean);
+                    repo.checkout_index(None, Some(&mut builder)).map_err(|e| {
+                        EgError::Internal {
+                            context: format!("discard checkout failed: {e}"),
+                        }
+                    })?;
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    };
+    inner()
+}
+
 pub fn discard(
     repo: &Repository,
     repo_id: &str,
@@ -80,48 +122,34 @@ pub fn discard(
             kind: eg_safety::OpKind::Discard,
             paths: paths.to_vec(),
             snapshot_ref,
+            target: None,
             undone: false,
         },
     )?;
 
-    // 1. Index := HEAD for every path (no-op when unborn).
-    stage(repo, paths, StageMode::Unstage)?;
-
-    // 2. Normalize the worktree to the (freshly reset) index.
-    let report = status::status(repo_id, repo)?;
-    for path in paths {
-        let entry = find_entry(&report, path);
-        let clean = normalize(path);
-        let abs = repo
-            .workdir()
-            .ok_or_else(|| EgError::NotSupported {
-                feature: "bare repository discard".into(),
-            })?
-            .join(clean);
-        match entry.map(|e| e.kind) {
-            Some(ChangeKind::Untracked) => {
-                if abs.is_dir() {
-                    fs::remove_dir_all(&abs).map_err(fs_err("remove untracked dir"))?;
-                } else if abs.is_file() {
-                    fs::remove_file(&abs).map_err(fs_err("remove untracked file"))?;
-                }
-            }
-            Some(ChangeKind::Modified | ChangeKind::Deleted | ChangeKind::Renamed) => {
-                let mut builder = CheckoutBuilder::new();
-                builder.force().update_index(true).path(clean);
-                repo.checkout_index(None, Some(&mut builder))
-                    .map_err(|e| EgError::Internal {
-                        context: format!("discard checkout failed: {e}"),
-                    })?;
-            }
-            _ => {}
-        }
-    }
+    discard_apply(repo, paths)?;
     Ok(op_id)
 }
 
 /// Preview-style clean (m1-plan R-06): validates that every path is currently
 /// untracked, snapshots them, then deletes from disk. Returns the op id.
+/// Deletion action without the safety record (redo replays this primitive).
+pub fn clean_apply(repo: &Repository, paths: &[String]) -> Result<(), EgError> {
+    let workdir = repo.workdir().ok_or_else(|| EgError::NotSupported {
+        feature: "bare repository clean".into(),
+    })?;
+    for path in paths {
+        let clean_path = normalize(path);
+        let abs = workdir.join(clean_path);
+        if abs.is_dir() {
+            fs::remove_dir_all(&abs).map_err(fs_err("clean dir"))?;
+        } else if abs.is_file() {
+            fs::remove_file(&abs).map_err(fs_err("clean file"))?;
+        }
+    }
+    Ok(())
+}
+
 pub fn clean(
     repo: &Repository,
     repo_id: &str,
@@ -149,6 +177,7 @@ pub fn clean(
                 kind: eg_safety::OpKind::Clean,
                 paths: paths.to_vec(),
                 snapshot_ref: Some(snapshot_ref),
+                target: None,
                 undone: false,
             },
         )
@@ -159,18 +188,7 @@ pub fn clean(
             other => other,
         })?;
 
-    let workdir = repo.workdir().ok_or_else(|| EgError::NotSupported {
-        feature: "bare repository clean".into(),
-    })?;
-    for path in paths {
-        let clean_path = normalize(path);
-        let abs = workdir.join(clean_path);
-        if abs.is_dir() {
-            fs::remove_dir_all(&abs).map_err(fs_err("clean dir"))?;
-        } else if abs.is_file() {
-            fs::remove_file(&abs).map_err(fs_err("clean file"))?;
-        }
-    }
+    clean_apply(repo, paths)?;
     Ok(op_id)
 }
 
@@ -192,46 +210,67 @@ pub fn undo_operation(
             feature: "该操作已经撤销过".into(),
         });
     }
-    let Some(snapshot_ref) = &record.snapshot_ref else {
-        return Err(EgError::NotSupported {
-            feature: "该操作没有可恢复的快照".into(),
-        });
-    };
-    // Deleted branches/tags restore from their trash ref; hard resets move
-    // the branch back and rebuild the doomed files; worktree ops restore
-    // from backup snapshots.
-    if record.kind == eg_safety::OpKind::Reset {
-        crate::merge::undo_reset(repo, &record)?;
-    } else if record.kind == eg_safety::OpKind::RefDelete {
-        let Some(name) = record.paths.first() else {
-            return Err(EgError::Internal {
-                context: "ref delete record is missing the name".into(),
-            });
-        };
-        let reference = repo
-            .find_reference(snapshot_ref)
-            .map_err(|e| EgError::Internal {
-                context: format!("回收站引用缺失：{e}"),
+    match record.kind {
+        // 强推可回滚 (R-22): restore the remote ref by force-pushing the old
+        // tip back. paths[0]=remote branch, paths[1]=old remote tip,
+        // paths[2]=remote name; no local snapshot involved.
+        eg_safety::OpKind::ForcePush => {
+            let branch = record.paths.first().cloned().unwrap_or_default();
+            let old_tip = record.paths.get(1).cloned().unwrap_or_default();
+            let remote = record.paths.get(2).cloned().unwrap_or_default();
+            let cli = crate::remote::GitCli::new(repo)?;
+            cli.push_restore(&remote, &old_tip, &format!("refs/heads/{branch}"))?;
+        }
+        eg_safety::OpKind::Reset => {
+            crate::merge::undo_reset(repo, &record)?;
+        }
+        // Deleted branches/tags restore from their trash ref.
+        eg_safety::OpKind::RefDelete => {
+            let snapshot_ref = record
+                .snapshot_ref
+                .as_deref()
+                .ok_or_else(|| EgError::Internal {
+                    context: "ref delete record has no trash ref".into(),
+                })?;
+            let Some(name) = record.paths.first() else {
+                return Err(EgError::Internal {
+                    context: "ref delete record is missing the name".into(),
+                });
+            };
+            let reference = repo
+                .find_reference(snapshot_ref)
+                .map_err(|e| EgError::Internal {
+                    context: format!("回收站引用缺失：{e}"),
+                })?;
+            let target = reference.target().ok_or_else(|| EgError::Internal {
+                context: "trash ref has no target".into(),
             })?;
-        let target = reference.target().ok_or_else(|| EgError::Internal {
-            context: "trash ref has no target".into(),
-        })?;
-        // The trash ref name encodes the kind (branch-<uuid>/tag-<uuid>).
-        let is_tag = snapshot_ref.contains("/tag-");
-        let refname = if is_tag {
-            format!("refs/tags/{name}")
-        } else {
-            format!("refs/heads/{name}")
-        };
-        repo.reference(&refname, target, true, &format!("easy-git restore {name}"))
-            .map_err(|e| EgError::Internal {
-                context: format!("恢复失败（名称可能已被占用）：{e}"),
-            })?;
-        repo.find_reference(snapshot_ref)
-            .and_then(|mut r| r.delete())
-            .ok();
-    } else {
-        eg_safety::restore_snapshot(repo, snapshot_ref, &record.paths)?;
+            // The trash ref name encodes the kind (branch-<uuid>/tag-<uuid>).
+            let is_tag = snapshot_ref.contains("/tag-");
+            let refname = if is_tag {
+                format!("refs/tags/{name}")
+            } else {
+                format!("refs/heads/{name}")
+            };
+            repo.reference(&refname, target, true, &format!("easy-git restore {name}"))
+                .map_err(|e| EgError::Internal {
+                    context: format!("恢复失败（名称可能已被占用）：{e}"),
+                })?;
+            repo.find_reference(snapshot_ref)
+                .and_then(|mut r| r.delete())
+                .ok();
+        }
+        // Worktree ops restore from backup snapshots.
+        eg_safety::OpKind::Discard | eg_safety::OpKind::Clean => {
+            let snapshot_ref =
+                record
+                    .snapshot_ref
+                    .as_deref()
+                    .ok_or_else(|| EgError::NotSupported {
+                        feature: "该操作没有可恢复的快照".into(),
+                    })?;
+            eg_safety::restore_snapshot(repo, snapshot_ref, &record.paths)?;
+        }
     }
     safety.record(
         repo_id,
@@ -240,15 +279,92 @@ pub fn undo_operation(
             time: now_secs(),
             kind: record.kind,
             paths: record.paths,
-            snapshot_ref: Some(snapshot_ref.clone()),
+            snapshot_ref: record.snapshot_ref,
+            target: record.target,
             undone: true,
         },
     )?;
     Ok(())
 }
 
-/// Appends ignore rules to `.gitignore` (m1-plan F-10). Existing identical
-/// rules are not duplicated.
+/// Redoes the most recent undone operation (m1-plan R-25 撤销/重做引擎,
+/// 引用快照树 decision): replays the original op semantics. Returns the
+/// replayed op id (new log line, undone=false) for the toast.
+pub fn redo_last(
+    repo: &mut Repository,
+    repo_id: &str,
+    safety: &eg_safety::Safety,
+) -> Result<String, EgError> {
+    // history() dedups by op_id keeping the latest line; the last undone
+    // record (log order) is the redo candidate.
+    let record = safety
+        .history(repo_id)
+        .into_iter()
+        .rfind(|r| r.undone)
+        .ok_or_else(|| EgError::NotSupported {
+            feature: "没有可重做的操作".into(),
+        })?;
+
+    // Replay WITHOUT a fresh record, then re-activate the original op
+    // (same op_id, undone=false) — undoing the redone op still unwinds to
+    // its original snapshot, so the chain stays consistent (引用快照树).
+    match record.kind {
+        eg_safety::OpKind::ForcePush => {
+            // Re-force the recorded target tip to the remote branch.
+            let branch = record.paths.first().cloned().unwrap_or_default();
+            let remote = record.paths.get(2).cloned().unwrap_or_default();
+            let new_tip = record.target.clone().unwrap_or_default();
+            let cli = crate::remote::GitCli::new(repo)?;
+            cli.push_restore(&remote, &new_tip, &format!("refs/heads/{branch}"))?;
+        }
+        // Discard/Clean records carry just the affected paths.
+        eg_safety::OpKind::Discard => {
+            discard_apply(repo, &record.paths)?;
+        }
+        eg_safety::OpKind::Clean => {
+            clean_apply(repo, &record.paths)?;
+        }
+        eg_safety::OpKind::RefDelete => {
+            let name = record.paths.first().cloned().unwrap_or_default();
+            let is_tag = record
+                .snapshot_ref
+                .as_deref()
+                .map(|r| r.contains("/tag-"))
+                .unwrap_or(false);
+            if is_tag {
+                crate::refs::delete_tag_apply(repo, &name)?;
+            } else {
+                crate::refs::delete_branch_apply(repo, &name)?;
+            }
+        }
+        eg_safety::OpKind::Reset => {
+            // Replays the reset AND re-activates the original record.
+            crate::merge::reset_with_record(
+                repo,
+                repo_id,
+                eg_types::ResetMode::Hard,
+                record.target.as_deref(),
+                safety,
+                Some(record.clone()),
+            )?;
+            return Ok(record.op_id);
+        }
+    }
+    safety.record(
+        repo_id,
+        &eg_safety::OpRecord {
+            op_id: record.op_id.clone(),
+            time: now_secs(),
+            kind: record.kind,
+            paths: record.paths.clone(),
+            snapshot_ref: record.snapshot_ref.clone(),
+            target: record.target.clone(),
+            undone: false,
+        },
+    )?;
+    Ok(record.op_id)
+}
+
 pub fn ignore(
     repo: &Repository,
     paths: &[String],

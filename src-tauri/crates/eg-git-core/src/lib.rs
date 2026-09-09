@@ -9,9 +9,11 @@ pub mod log;
 pub mod merge;
 pub mod ops;
 pub mod refs;
+pub mod remote;
 pub mod repo;
 pub mod stash;
 pub mod status;
+pub mod timeline;
 pub mod worker;
 
 pub use worker::{RepoManager, WorkerHandle};

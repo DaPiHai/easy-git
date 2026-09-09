@@ -48,8 +48,27 @@ fn main() {
             easy_git::commands::conflict_resolve,
             easy_git::commands::revert_commits,
             easy_git::commands::reset_commits,
+            easy_git::commands::sync_fetch,
+            easy_git::commands::sync_pull,
+            easy_git::commands::sync_push,
+            easy_git::commands::remote_test,
+            easy_git::commands::repo_clone,
+            easy_git::commands::remote_list,
+            easy_git::commands::remote_add,
+            easy_git::commands::remote_rename,
+            easy_git::commands::remote_remove,
+            easy_git::commands::remote_set_url,
+            easy_git::commands::redo_operation,
+            easy_git::commands::timeline_get,
+            easy_git::commands::timeline_restore,
+            easy_git::commands::branch_set_upstream,
+            easy_git::commands::undo_redo_state,
+            easy_git::commands::remote_branch_list,
         ])
-        .events(collect_events![easy_git::events::RepoChanged])
+        .events(collect_events![
+            easy_git::events::RepoChanged,
+            easy_git::events::SyncProgressEvent
+        ])
         .error_handling(ErrorHandlingMode::Result);
 
     builder
