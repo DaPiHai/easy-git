@@ -5,9 +5,10 @@ use eg_git_core::worker::{ChangeSink, DiscardOutcome};
 use eg_git_core::RepoManager;
 use eg_safety::Safety;
 use eg_types::{
-    AppVersion, BranchInfo, CommitDetail, CommitOutcome, CommitRequest, ConfigScope, DiffRequest,
-    DiffResponse, EgError, IgnoreMode, LogFilter, LogPage, RepoSummary, StageLinesRequest,
-    StageMode, StashEntry, StatusReport, TagInfo,
+    AppVersion, BranchInfo, CommitDetail, CommitOutcome, CommitRequest, ConfigScope, ConflictFile,
+    DiffRequest, DiffResponse, EgError, IgnoreMode, LogFilter, LogPage, MergeOutcome, MergeState,
+    RepoSummary, ResetMode, ResetOutcome, StageLinesRequest, StageMode, StashEntry, StatusReport,
+    TagInfo,
 };
 use tauri::{AppHandle, State};
 use tauri_specta::Event;
@@ -411,6 +412,94 @@ pub async fn stash_drop(
 ) -> Result<Vec<StashEntry>, EgError> {
     let handle = manager.get(&repo_id)?;
     run_blocking(move || handle.stash_drop(index)).await
+}
+
+/// Starts merging `name` into the current branch (m1-plan R-19). A conflicted
+/// merge parks itself (`MERGE_HEAD` + conflict index) and reports its files.
+#[tauri::command]
+#[specta::specta]
+pub async fn merge_start(
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+    name: String,
+    no_ff: bool,
+) -> Result<MergeOutcome, EgError> {
+    let handle = manager.get(&repo_id)?;
+    run_blocking(move || handle.merge_start(name, no_ff)).await
+}
+
+/// Merge progress while parked on conflicts (m1-plan R-19 / F-24).
+#[tauri::command]
+#[specta::specta]
+pub async fn merge_state(
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+) -> Result<Option<MergeState>, EgError> {
+    let handle = manager.get(&repo_id)?;
+    run_blocking(move || handle.merge_state()).await
+}
+
+/// Aborts a parked merge and hard-resets to the pre-merge state (R-19).
+#[tauri::command]
+#[specta::specta]
+pub async fn merge_abort(
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+) -> Result<StatusReport, EgError> {
+    let handle = manager.get(&repo_id)?;
+    run_blocking(move || handle.merge_abort()).await
+}
+
+/// Conflicted files with three-stage contents and parsed blocks (R-21 / F-24).
+#[tauri::command]
+#[specta::specta]
+pub async fn conflicts_get(
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+) -> Result<Vec<ConflictFile>, EgError> {
+    let handle = manager.get(&repo_id)?;
+    run_blocking(move || handle.conflicts_get()).await
+}
+
+/// Writes one resolved conflict file and stages it (m1-plan R-21).
+#[tauri::command]
+#[specta::specta]
+pub async fn conflict_resolve(
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+    path: String,
+    content: String,
+) -> Result<StatusReport, EgError> {
+    let handle = manager.get(&repo_id)?;
+    run_blocking(move || handle.conflict_resolve(path, content)).await
+}
+
+/// Reverts the given commits into the index + worktree (m1-plan R-20).
+#[tauri::command]
+#[specta::specta]
+pub async fn revert_commits(
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+    oids: Vec<String>,
+) -> Result<StatusReport, EgError> {
+    let handle = manager.get(&repo_id)?;
+    run_blocking(move || handle.revert(oids)).await
+}
+
+/// Resets to `target` with the three git modes (m1-plan R-20). Hard resets
+/// snapshot first and return an op id for the 撤销 toast.
+#[tauri::command]
+#[specta::specta]
+pub async fn reset_commits(
+    manager: State<'_, RepoManager>,
+    safety: State<'_, Safety>,
+    repo_id: String,
+    mode: ResetMode,
+    target: Option<String>,
+) -> Result<ResetOutcome, EgError> {
+    let handle = manager.get(&repo_id)?;
+    let safety = std::sync::Arc::new(safety.inner().clone());
+    run_blocking(move || handle.reset(mode, target, safety)).await
 }
 
 async fn run_blocking<T, F>(f: F) -> Result<T, EgError>

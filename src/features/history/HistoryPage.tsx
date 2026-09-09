@@ -1,13 +1,15 @@
 import * as ContextMenu from '@radix-ui/react-context-menu';
 import { GitBranch, GitCommitHorizontal, GitGraph, Search, Tag } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Dialog, EmptyState } from '../../components';
+import { Button, Dialog, EmptyState } from '../../components';
 import { t } from '../../lib/i18n';
 import { authorInitial, formatRelativeTime } from '../../lib/time';
 import type { CommitLogEntry } from '../../lib/ipc/commands';
 import { useHistoryStore } from '../../stores/historyStore';
+import { useMergeStore } from '../../stores/mergeStore';
 import { useRepoStore } from '../../stores/repoStore';
 import { useRefStore } from '../../stores/refsStore';
+import { toast } from '../../stores/toastStore';
 import { useUiStore } from '../../stores/uiStore';
 import { DAG_W, OVERSCAN_ROWS, ROW_H, branchColors, drawGraph } from './graph';
 
@@ -156,6 +158,35 @@ function CommitList() {
   const createBranch = useRefStore((s) => s.createBranch);
   const [branchName, setBranchName] = useState('');
 
+  // F-25: 回滚 / 重置 from the DAG context menu (R-20).
+  const revert = useMergeStore((s) => s.revert);
+  const reset = useMergeStore((s) => s.reset);
+  const undoOperation = useRepoStore((s) => s.undoOperation);
+  const [hardResetAt, setHardResetAt] = useState<CommitLogEntry | null>(null);
+
+  const onRevert = (oid: string) => {
+    void revert([oid]);
+  };
+  const onResetMixed = (entry: CommitLogEntry) => {
+    void reset('mixed', entry.oid).then((outcome) => {
+      if (outcome) toast.success(t('history.reset.done', { short: entry.shortOid }));
+    });
+  };
+  const onResetHard = (entry: CommitLogEntry) => {
+    void reset('hard', entry.oid).then((outcome) => {
+      if (!outcome) return;
+      const { opId } = outcome;
+      if (opId) {
+        toast.info(t('history.reset.undoable', { short: entry.shortOid }), {
+          label: t('toast.undo'),
+          onClick: () => void undoOperation(opId),
+        });
+      } else {
+        toast.success(t('history.reset.done', { short: entry.shortOid }));
+      }
+    });
+  };
+
   // Virtual window: only rows near the viewport mount in the DOM.
   const first = Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN_ROWS);
   const visibleCount = Math.ceil(viewportHeight / ROW_H) + OVERSCAN_ROWS * 2;
@@ -267,6 +298,34 @@ function CommitList() {
           </button>
         </div>
       </Dialog>
+
+      {/* 硬重置 confirmation (R-20, red + confirm + undoable snapshot). */}
+      <Dialog
+        open={hardResetAt !== null}
+        title={t('history.reset.hardTitle', { short: hardResetAt?.shortOid ?? '' })}
+        danger
+        onClose={() => setHardResetAt(null)}
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => setHardResetAt(null)}>
+              {t('dialog.cancel')}
+            </Button>
+            <Button
+              variant="danger"
+              data-testid="reset-hard-confirm"
+              onClick={() => {
+                const entry = hardResetAt;
+                setHardResetAt(null);
+                if (entry) onResetHard(entry);
+              }}
+            >
+              {t('history.reset.hardConfirm')}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-caption text-ink-muted">{t('history.reset.hardDesc')}</p>
+      </Dialog>
       {/* Scroll-length spacer; sticky canvas + visible DOM rows render inside. */}
       <div style={{ height: entries.length * ROW_H }}>
         <canvas
@@ -290,6 +349,9 @@ function CommitList() {
             selected={entry.oid === selectedOid}
             onSelect={() => void selectCommit(entry.oid)}
             onBranchAt={() => setBranchAt(entry.oid)}
+            onRevert={() => onRevert(entry.oid)}
+            onResetMixed={() => onResetMixed(entry)}
+            onResetHard={() => setHardResetAt(entry)}
           />
         ))}
       </div>
@@ -330,12 +392,18 @@ function CommitRow({
   selected,
   onSelect,
   onBranchAt,
+  onRevert,
+  onResetMixed,
+  onResetHard,
 }: {
   entry: CommitLogEntry;
   index: number;
   selected: boolean;
   onSelect: () => void;
   onBranchAt: () => void;
+  onRevert: () => void;
+  onResetMixed: () => void;
+  onResetHard: () => void;
 }) {
   return (
     <ContextMenu.Root modal={false}>
@@ -380,16 +448,26 @@ function CommitRow({
           <ContextMenu.Item className={menuItemClass} onSelect={onBranchAt}>
             {t('history.menu.branch')}
           </ContextMenu.Item>
-          {(['history.menu.cherryPick', 'history.menu.revert'] as const).map((key) => (
-            <ContextMenu.Item
-              key={key}
-              disabled
-              className={`${menuItemClass} disabled:opacity-40`}
-              title={t('history.menu.stubHint')}
-            >
-              {t(key)}
-            </ContextMenu.Item>
-          ))}
+          <ContextMenu.Item className={menuItemClass} onSelect={onRevert}>
+            {t('history.menu.revert')}
+          </ContextMenu.Item>
+          <ContextMenu.Separator className="my-1 h-px bg-hairline" />
+          <ContextMenu.Sub>
+            <ContextMenu.SubTrigger className={menuItemClass}>
+              {t('history.menu.resetTo')}
+              <span className="ml-auto text-caption text-ink-tertiary">›</span>
+            </ContextMenu.SubTrigger>
+            <ContextMenu.Portal>
+              <ContextMenu.SubContent className={menuItemContentClass}>
+                <ContextMenu.Item className={menuItemClass} onSelect={onResetMixed}>
+                  {t('history.reset.mixed')}
+                </ContextMenu.Item>
+                <ContextMenu.Item className={`${menuItemClass} text-danger`} onSelect={onResetHard}>
+                  {t('history.reset.hard')}
+                </ContextMenu.Item>
+              </ContextMenu.SubContent>
+            </ContextMenu.Portal>
+          </ContextMenu.Sub>
         </ContextMenu.Content>
       </ContextMenu.Portal>
     </ContextMenu.Root>

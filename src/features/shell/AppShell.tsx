@@ -8,6 +8,8 @@ import { RepoSidebar } from './RepoSidebar';
 import { QuickSwitcher } from '../palette/QuickSwitcher';
 import { TopBar } from './TopBar';
 import { OpenRepoWizard } from '../repo/OpenRepoWizard';
+import { ConflictWizard } from '../conflicts/ConflictWizard';
+import { useMergeStore } from '../../stores/mergeStore';
 import { ChangesPage } from '../changes/ChangesPage';
 import { HistoryPage } from '../history/HistoryPage';
 import { BranchesPage } from '../branches/BranchesPage';
@@ -19,6 +21,9 @@ export function AppShell() {
   const view = useUiStore((s) => s.view);
   const setSwitcherOpen = useUiStore((s) => s.setSwitcherOpen);
   const hasActiveRepo = useRepoStore((s) => s.activeId !== null);
+  // F-24: a parked merge takes over the main view until resolved/aborted.
+  const midMerge = useMergeStore((s) => s.mergeState !== null);
+  const status = useRepoStore((s) => s.status);
 
   useEffect(() => {
     const { initTheme, fetchAppVersion } = useUiStore.getState();
@@ -30,6 +35,11 @@ export function AppShell() {
       useRepoStore.getState().dispose();
     };
   }, []);
+
+  // Track the parked-merge state alongside every status refresh (fs-watch).
+  useEffect(() => {
+    void useMergeStore.getState().poll();
+  }, [hasActiveRepo, status]);
 
   // Ctrl/Cmd+K quick switcher (F-05 prototype).
   useEffect(() => {
@@ -54,6 +64,8 @@ export function AppShell() {
             <SettingsPage />
           ) : !hasActiveRepo ? (
             <OpenRepoWizard />
+          ) : midMerge ? (
+            <ConflictWizard />
           ) : (
             <>
               {view === 'changes' && <ChangesPage />}

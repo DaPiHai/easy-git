@@ -2,7 +2,6 @@
 //! switch, tags and stash round-trips.
 
 use std::path::Path;
-use std::sync::Arc;
 
 use eg_git_core::{ops, refs, stash};
 use eg_safety::Safety;
@@ -53,7 +52,7 @@ fn head_branch(repo: &Repository) -> String {
 fn branch_crud_and_recycle_bin() {
     let dir = TempDir::new().unwrap();
     let safety = Safety::for_tests(dir.path());
-    let (_repo_dir, repo) = init_repo();
+    let (_repo_dir, mut repo) = init_repo();
     let base = commit_all(&repo, &[], "base", &[("a.txt", "1\n")]);
 
     // Create at HEAD and at an explicit commit.
@@ -102,7 +101,7 @@ fn branch_crud_and_recycle_bin() {
     assert_eq!(trash_count(&repo), 1, "delete parks one trash ref");
     let op_id = refs::delete_branch(&repo, "r1", &safety, "at-base").unwrap();
     assert_eq!(trash_count(&repo), 2, "both deletes parked a trash ref");
-    ops::undo_operation(&repo, "r1", &safety, &op_id).unwrap();
+    ops::undo_operation(&mut repo, "r1", &safety, &op_id).unwrap();
     let restored = repo
         .find_branch("at-base", git2::BranchType::Local)
         .unwrap();
@@ -113,7 +112,7 @@ fn branch_crud_and_recycle_bin() {
 
 #[test]
 fn switch_rejects_dirty_worktree_but_allows_untracked() {
-    let (_dir, repo) = init_repo();
+    let (_dir, mut repo) = init_repo();
     commit_all(&repo, &[], "base", &[("a.txt", "1\n")]);
     refs::create_branch(&repo, "other", None).unwrap();
 
@@ -170,7 +169,7 @@ fn switch_rejects_dirty_worktree_but_allows_untracked() {
 fn tag_crud_and_recycle_bin() {
     let dir = TempDir::new().unwrap();
     let safety = Safety::for_tests(dir.path());
-    let (_repo_dir, repo) = init_repo();
+    let (_repo_dir, mut repo) = init_repo();
     let first = commit_all(&repo, &[], "first", &[("a.txt", "1\n")]);
     let second = commit_all(&repo, &[&first], "second", &[("a.txt", "2\n")]);
 
@@ -191,18 +190,22 @@ fn tag_crud_and_recycle_bin() {
     // Delete + undo restores the ANNOTATED tag object, not just the commit.
     let op_id = refs::delete_tag(&repo, "r1", &safety, "release-1").unwrap();
     assert!(repo.find_reference("refs/tags/release-1").is_err());
-    ops::undo_operation(&repo, "r1", &safety, &op_id).unwrap();
-    let restored = repo.find_reference("refs/tags/release-1").unwrap();
-    assert!(
-        restored.peel_to_tag().is_ok(),
-        "annotated tag object survives"
-    );
+    ops::undo_operation(&mut repo, "r1", &safety, &op_id).unwrap();
+    {
+        let restored = repo.find_reference("refs/tags/release-1").unwrap();
+        assert!(
+            restored.peel_to_tag().is_ok(),
+            "annotated tag object survives"
+        );
+    }
 
     // Lightweight restore keeps pointing at the commit.
     let op_id = refs::delete_tag(&repo, "r1", &safety, "v1").unwrap();
-    ops::undo_operation(&repo, "r1", &safety, &op_id).unwrap();
-    let restored = repo.find_reference("refs/tags/v1").unwrap();
-    assert_eq!(restored.peel_to_commit().unwrap().id(), first);
+    ops::undo_operation(&mut repo, "r1", &safety, &op_id).unwrap();
+    {
+        let restored = repo.find_reference("refs/tags/v1").unwrap();
+        assert_eq!(restored.peel_to_commit().unwrap().id(), first);
+    }
 }
 
 #[test]

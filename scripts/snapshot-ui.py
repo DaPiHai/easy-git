@@ -371,6 +371,166 @@ STATES = [
         window.__eg.uiStore.getState().setView('storage');
       }})()
     """, "33-dark-storage.png"),
+    # ---- W8: conflict wizard (F-24) / merge dialog / reset menu (F-25/F-26) ----
+    (f"""
+      (() => {{
+        window.__eg.mergeStore.setState({{
+          mergeState: {{ message: "Merge branch 'feature/dag-render'", theirs: ['feature/dag-render'] }},
+          conflicts: [
+            {{
+              path: 'src/features/history/graph.ts',
+              baseContent: 'const LANE_W = 24;\\nexport function laneX(lane) {{\\n  return 12;\\n}}\\n',
+              oursContent: 'const LANE_W = 24;\\nexport function laneX(lane) {{\\n  return 12 + lane * LANE_W;\\n}}\\n',
+              theirsContent: 'const LANE_W = 24;\\nexport function laneX(lane) {{\\n  const base = 9;\\n  return base + lane * LANE_W;\\n}}\\n',
+              segments: ['const LANE_W = 24;\\nexport function laneX(lane) {{\\n'],
+              blocks: [
+                {{ ours: ['  return 12 + lane * LANE_W;'], theirs: ['  const base = 9;', '  return base + lane * LANE_W;'] }},
+              ],
+            }},
+            {{
+              path: 'assets/logo.png', baseContent: '', oursContent: '', theirsContent: '',
+              segments: [], blocks: [], isBinary: true,
+            }},
+          ],
+          knownPaths: ['src/features/history/graph.ts', 'assets/logo.png'],
+        }});
+        window.__eg.uiStore.getState().setView('changes');
+      }})()
+    """, "40-dark-conflict-wizard.png"),
+    ("""
+      (() => {
+        const clickIn = (testid, label) => {
+          const card = document.querySelector(`[data-testid="${testid}"]`);
+          [...card.querySelectorAll('button')].find((b) => b.textContent.includes(label)).click();
+        };
+        clickIn('conflict-block-0', '用我的');
+      })()
+    """, "41-dark-conflict-decided.png"),
+    ("""
+      (() => {
+        [...document.querySelectorAll('button')].find((b) => b.textContent === '中止合并').click();
+      })()
+    """, "42-dark-conflict-abort-dialog.png"),
+    ("""
+      (() => {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        window.__eg.mergeStore.setState({ conflicts: [] });
+      })()
+    """, "43a-dark-conflict-all-resolved.png"),
+    ("""
+      (() => {
+        [...document.querySelectorAll('button')].find((b) => b.textContent === '完成合并').click();
+      })()
+    """, "43b-dark-conflict-finish-dialog.png"),
+    (f"""
+      (() => {{
+        window.dispatchEvent(new KeyboardEvent('keydown', {{ key: 'Escape', bubbles: true }}));
+        // Changes view with nothing selected so the commit box shows; the
+        // parked merge prefills its subject.
+        window.__eg.repoStore.setState({{ selectedChange: null }});
+        window.__eg.historyStore.setState({{ detailFile: null }});
+        window.__eg.diffStore.setState({{ data: null, request: null }});
+        window.__eg.mergeStore.setState({{
+          conflicts: [{{
+            path: 'src/features/history/graph.ts',
+            baseContent: 'const LANE_W = 24;\\nexport function laneX(lane) {{\\n  return 12;\\n}}\\n',
+            oursContent: 'const LANE_W = 24;\\nexport function laneX(lane) {{\\n  return 12 + lane * LANE_W;\\n}}\\n',
+            theirsContent: 'const LANE_W = 24;\\nexport function laneX(lane) {{\\n  const base = 9;\\n  return base + lane * LANE_W;\\n}}\\n',
+            segments: ['const LANE_W = 24;\\nexport function laneX(lane) {{\\n'],
+            blocks: [
+              {{ ours: ['  return 12 + lane * LANE_W;'], theirs: ['  const base = 9;', '  return base + lane * LANE_W;'] }},
+            ],
+          }}],
+        }});
+        window.__eg.uiStore.getState().setView('changes');
+      }})()
+    """, "44-dark-commitbox-merge-prefill.png"),
+    ("""
+      (() => {
+        window.__eg.mergeStore.setState({ mergeState: null, conflicts: [] });
+        window.__eg.uiStore.getState().setView('branches');
+      })()
+    """, "45a-dark-branches-for-merge.png"),
+    ("""
+      (() => {
+        // The upstream badge exists only on the feature row (main's tip
+        // subject also contains the branch name).
+        const row = [...document.querySelectorAll('[data-testid="branch-row"]')]
+          .find((r) => r.textContent.includes('origin/feature/dag-render'));
+        const rect = row.getBoundingClientRect();
+        row.dispatchEvent(new MouseEvent('contextmenu', {
+          bubbles: true, cancelable: true, button: 2,
+          clientX: Math.round(rect.left + rect.width / 2),
+          clientY: Math.round(rect.top + rect.height / 2),
+        }));
+      })()
+    """, "45b-dark-branch-menu.png"),
+    ("""
+      (() => {
+        const item = [...document.querySelectorAll('[role="menuitem"]')]
+          .find((i) => i.textContent.includes('合并…'));
+        item.click();
+      })()
+    """, "45-dark-merge-dialog.png"),
+    ("""
+      (() => {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        window.__eg.uiStore.getState().setView('history');
+      })()
+    """, "46a-dark-history-for-reset.png"),
+    ("""
+      (() => {
+        const row = document.querySelector('[data-testid="history-row"]');
+        const rect = row.getBoundingClientRect();
+        row.dispatchEvent(new MouseEvent('contextmenu', {
+          bubbles: true, cancelable: true, button: 2,
+          clientX: Math.round(rect.left + rect.width / 2),
+          clientY: Math.round(rect.top + rect.height / 2),
+        }));
+      })()
+    """, "46a2-dark-history-menu.png"),
+    ("""
+      (() => {
+        const sub = [...document.querySelectorAll('[role="menuitem"]')]
+          .find((i) => i.textContent.includes('重置到此提交'));
+        sub.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+      })()
+    """, "46-dark-history-reset-menu.png"),
+
+    ("""
+      (() => {
+        const item = [...document.querySelectorAll('[role="menuitem"]')]
+          .find((i) => i.textContent.includes('丢弃修改（硬重置）'));
+        item.click();
+      })()
+    """, "47-dark-reset-hard-dialog.png"),
+    (f"""
+      (() => {{
+        window.dispatchEvent(new KeyboardEvent('keydown', {{ key: 'Escape', bubbles: true }}));
+        document.querySelector('[data-testid="theme-light"]').click();
+        // Full takeover state again: merge parked + changes view.
+        window.__eg.mergeStore.setState({{
+          mergeState: {{ message: "Merge branch 'feature/dag-render'", theirs: ['feature/dag-render'] }},
+          conflicts: [
+            {{
+              path: 'src/features/history/graph.ts',
+              baseContent: 'const LANE_W = 24;\\nexport function laneX(lane) {{\\n  return 12;\\n}}\\n',
+              oursContent: 'const LANE_W = 24;\\nexport function laneX(lane) {{\\n  return 12 + lane * LANE_W;\\n}}\\n',
+              theirsContent: 'const LANE_W = 24;\\nexport function laneX(lane) {{\\n  const base = 9;\\n  return base + lane * LANE_W;\\n}}\\n',
+              segments: ['const LANE_W = 24;\\nexport function laneX(lane) {{\\n'],
+              blocks: [
+                {{ ours: ['  return 12 + lane * LANE_W;'], theirs: ['  const base = 9;', '  return base + lane * LANE_W;'] }},
+              ],
+            }},
+            {{
+              path: 'assets/logo.png', baseContent: '', oursContent: '', theirsContent: '',
+              segments: [], blocks: [], isBinary: true,
+            }},
+          ],
+        }});
+        window.__eg.uiStore.getState().setView('changes');
+      }})()
+    """, "48-light-conflict-wizard.png"),
 ]
 
 class Snapper:
@@ -380,7 +540,8 @@ class Snapper:
         self.state_index = -1
         self.win = Gtk.Window(title="EasyGit")
         self.win.set_default_size(WIDTH, HEIGHT)
-        self.view = WebKit2.WebView()
+        # Ephemeral context: every run sees the current bundle, not a cached one.
+        self.view = WebKit2.WebView.new_with_context(WebKit2.WebContext.new_ephemeral())
         settings = self.view.get_settings()
         settings.set_enable_developer_extras(False)
         self.view.connect("load-changed", self.on_load_changed)
@@ -391,8 +552,8 @@ class Snapper:
 
     def on_load_changed(self, view, event):
         if event == WebKit2.LoadEvent.FINISHED:
-            # Let fonts/first paint settle, then walk the state list.
-            GLib.timeout_add(900, self.next_state)
+            # Let fonts/first paint settle (module init included), then walk.
+            GLib.timeout_add(1500, self.next_state)
 
     def run_js(self, js, on_done):
         if js is None:
@@ -400,7 +561,10 @@ class Snapper:
             return
 
         def callback(view, result):
-            view.run_javascript_finish(result)
+            try:
+                view.run_javascript_finish(result)
+            except Exception as exc:  # surface page-side JS errors
+                print(f"JS ERROR in state {self.state_index}: {exc}")
             on_done()
 
         self.view.run_javascript(js, None, callback)

@@ -1,10 +1,20 @@
 import * as ContextMenu from '@radix-ui/react-context-menu';
-import { ArrowDownRight, ArrowUpRight, Check, GitBranch, Pencil, Plus, Trash2 } from 'lucide-react';
+import {
+  ArrowDownRight,
+  ArrowUpRight,
+  Check,
+  GitBranch,
+  GitMerge,
+  Pencil,
+  Plus,
+  Trash2,
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Badge, Dialog, EmptyState } from '../../components';
 import { t } from '../../lib/i18n';
 import { authorInitial, formatRelativeTime } from '../../lib/time';
 import type { BranchInfo } from '../../lib/ipc/commands';
+import { useMergeStore } from '../../stores/mergeStore';
 import { useRepoStore } from '../../stores/repoStore';
 import { useRefStore } from '../../stores/refsStore';
 
@@ -18,6 +28,7 @@ type BranchDialog =
   | { kind: 'rename'; name: string }
   | { kind: 'delete'; name: string }
   | { kind: 'dirty'; name: string }
+  | { kind: 'merge'; name: string; current: string }
   | null;
 
 /**
@@ -85,6 +96,14 @@ export function BranchesPage() {
       ) : null}
       {dialog?.kind === 'dirty' ? (
         <StashSuggestionDialog open name={dialog.name} onClose={() => setDialog(null)} />
+      ) : null}
+      {dialog?.kind === 'merge' ? (
+        <MergeBranchDialog
+          open
+          name={dialog.name}
+          current={dialog.current}
+          onClose={() => setDialog(null)}
+        />
       ) : null}
     </div>
   );
@@ -165,6 +184,23 @@ function BranchRow({
               {t('branch.switchTo')}
             </ContextMenu.Item>
           ) : null}
+          {!branch.isCurrent ? (
+            <ContextMenu.Item
+              className={menuItemClass}
+              onSelect={() =>
+                onDialog({
+                  kind: 'merge',
+                  name: branch.name,
+                  current:
+                    useRepoStore.getState().repos[useRepoStore.getState().activeId ?? '']?.branch ??
+                    '',
+                })
+              }
+            >
+              <GitMerge className="size-3.5" aria-hidden />
+              {t('merge.menu')}
+            </ContextMenu.Item>
+          ) : null}
           <ContextMenu.Item
             className={menuItemClass}
             onSelect={() => onDialog({ kind: 'rename', name: branch.name })}
@@ -184,6 +220,60 @@ function BranchRow({
         </ContextMenu.Content>
       </ContextMenu.Portal>
     </ContextMenu.Root>
+  );
+}
+
+/**
+ * Merge dialog (F-26 简洁模式安全默认): fast-forward first; the no-ff merge
+ * commit stays opt-in for users who want branch history preserved.
+ */
+function MergeBranchDialog({
+  open,
+  name,
+  current,
+  onClose,
+}: {
+  open: boolean;
+  name: string;
+  current: string;
+  onClose: () => void;
+}) {
+  const startMerge = useMergeStore((s) => s.startMerge);
+  const [noFf, setNoFf] = useState(false);
+
+  const submit = () => {
+    void startMerge(name, noFf).then((ok) => {
+      if (ok) onClose();
+    });
+  };
+
+  return (
+    <FormDialog
+      open={open}
+      title={t('merge.title')}
+      confirmLabel={t('merge.menu')}
+      confirmTestId="merge-confirm"
+      onConfirm={submit}
+      onClose={onClose}
+    >
+      <p className="text-caption text-ink-muted">{t('merge.desc', { name, current })}</p>
+      <div className="mt-eg-3 flex flex-col gap-eg-2">
+        <label className="flex items-start gap-eg-2 text-caption text-ink-muted">
+          <input
+            type="checkbox"
+            data-testid="merge-no-ff"
+            checked={noFf}
+            onChange={(e) => setNoFf(e.target.checked)}
+            className="mt-0.5 size-3.5 accent-[var(--eg-primary)]"
+          />
+          <span>
+            <span className="font-medium text-ink">{t('merge.noFf')}</span>
+            <span className="block">{t('merge.noFfDesc')}</span>
+            <span className="mt-0.5 block text-ink-tertiary">{t('merge.autoFfDesc')}</span>
+          </span>
+        </label>
+      </div>
+    </FormDialog>
   );
 }
 

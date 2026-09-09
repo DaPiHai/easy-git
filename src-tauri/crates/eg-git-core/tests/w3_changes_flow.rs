@@ -47,7 +47,7 @@ fn safety() -> (TempDir, Safety) {
 
 #[test]
 fn stage_and_unstage_whole_file() {
-    let (_dir, repo) = init_repo();
+    let (_dir, mut repo) = init_repo();
     commit_file(&repo, "a.txt", "one\n", "init");
     std::fs::write(repo.workdir().unwrap().join("a.txt"), "two\n").unwrap();
     std::fs::write(repo.workdir().unwrap().join("new.txt"), "n\n").unwrap();
@@ -67,7 +67,7 @@ fn stage_and_unstage_whole_file() {
 
 #[test]
 fn unstage_staged_new_file_with_unborn_head() {
-    let (_dir, repo) = init_repo();
+    let (_dir, mut repo) = init_repo();
     std::fs::write(repo.workdir().unwrap().join("x.txt"), "x\n").unwrap();
     ops::stage(&repo, &paths(&["x.txt"]), StageMode::Stage).expect("stage");
     ops::stage(&repo, &paths(&["x.txt"]), StageMode::Unstage).expect("unstage");
@@ -78,7 +78,7 @@ fn unstage_staged_new_file_with_unborn_head() {
 
 #[test]
 fn discard_modified_file_then_undo_restores_exact_content() {
-    let (_dir, repo) = init_repo();
+    let (_dir, mut repo) = init_repo();
     let (_safety_dir, safety) = safety();
     commit_file(&repo, "a.txt", "original\n", "init");
 
@@ -90,7 +90,7 @@ fn discard_modified_file_then_undo_restores_exact_content() {
     assert!(status("r1", &repo).unwrap().is_clean());
 
     // Undo: the pre-discard content must come back.
-    ops::undo_operation(&repo, "r1", &safety, &op_id).expect("undo");
+    ops::undo_operation(&mut repo, "r1", &safety, &op_id).expect("undo");
     let content = std::fs::read_to_string(repo.workdir().unwrap().join("a.txt")).unwrap();
     assert_eq!(content, "messy edits\n", "undo restores the discarded edit");
 
@@ -101,7 +101,7 @@ fn discard_modified_file_then_undo_restores_exact_content() {
 
 #[test]
 fn discard_staged_deletion_and_undo_restores_file() {
-    let (_dir, repo) = init_repo();
+    let (_dir, mut repo) = init_repo();
     let (_safety_dir, safety) = safety();
     commit_file(&repo, "doomed.txt", "precious\n", "init");
 
@@ -117,13 +117,13 @@ fn discard_staged_deletion_and_undo_restores_file() {
     assert_eq!(content, "precious\n");
     assert!(status("r1", &repo).unwrap().is_clean());
 
-    ops::undo_operation(&repo, "r1", &safety, &op_id).expect("undo is a safe no-op");
+    ops::undo_operation(&mut repo, "r1", &safety, &op_id).expect("undo is a safe no-op");
     assert!(repo.workdir().unwrap().join("doomed.txt").exists());
 }
 
 #[test]
 fn discard_untracked_directory_and_undo_restores_files() {
-    let (_dir, repo) = init_repo();
+    let (_dir, mut repo) = init_repo();
     let (_safety_dir, safety) = safety();
     commit_file(&repo, "keep.txt", "k\n", "init");
 
@@ -135,7 +135,7 @@ fn discard_untracked_directory_and_undo_restores_files() {
     let op_id = ops::discard(&repo, "r1", &safety, &paths(&["assets/"])).expect("discard");
     assert!(!assets.exists(), "untracked dir removed by discard");
 
-    ops::undo_operation(&repo, "r1", &safety, &op_id).expect("undo");
+    ops::undo_operation(&mut repo, "r1", &safety, &op_id).expect("undo");
     assert_eq!(
         std::fs::read_to_string(assets.join("a.png")).unwrap(),
         "A",
@@ -150,7 +150,7 @@ fn discard_untracked_directory_and_undo_restores_files() {
 
 #[test]
 fn clean_only_untracked_and_undo_restores() {
-    let (_dir, repo) = init_repo();
+    let (_dir, mut repo) = init_repo();
     let (_safety_dir, safety) = safety();
     commit_file(&repo, "a.txt", "one\n", "init");
     std::fs::write(repo.workdir().unwrap().join("junk.log"), "junk\n").unwrap();
@@ -162,7 +162,7 @@ fn clean_only_untracked_and_undo_restores() {
     let op_id = ops::clean(&repo, "r1", &safety, &paths(&["junk.log"])).expect("clean");
     assert!(!repo.workdir().unwrap().join("junk.log").exists());
 
-    ops::undo_operation(&repo, "r1", &safety, &op_id).expect("undo");
+    ops::undo_operation(&mut repo, "r1", &safety, &op_id).expect("undo");
     assert_eq!(
         std::fs::read_to_string(repo.workdir().unwrap().join("junk.log")).unwrap(),
         "junk\n"
@@ -171,20 +171,20 @@ fn clean_only_untracked_and_undo_restores() {
 
 #[test]
 fn double_undo_is_rejected() {
-    let (_dir, repo) = init_repo();
+    let (_dir, mut repo) = init_repo();
     let (_safety_dir, safety) = safety();
     commit_file(&repo, "a.txt", "one\n", "init");
     std::fs::write(repo.workdir().unwrap().join("a.txt"), "two\n").unwrap();
 
     let op_id = ops::discard(&repo, "r1", &safety, &paths(&["a.txt"])).expect("discard");
-    ops::undo_operation(&repo, "r1", &safety, &op_id).expect("first undo");
-    let err = ops::undo_operation(&repo, "r1", &safety, &op_id).unwrap_err();
+    ops::undo_operation(&mut repo, "r1", &safety, &op_id).expect("first undo");
+    let err = ops::undo_operation(&mut repo, "r1", &safety, &op_id).unwrap_err();
     assert_eq!(err.code(), "not_supported");
 }
 
 #[test]
 fn ignore_writes_rules_and_filters_status() {
-    let (_dir, repo) = init_repo();
+    let (_dir, mut repo) = init_repo();
     commit_file(&repo, "a.txt", "one\n", "init");
     std::fs::write(repo.workdir().unwrap().join("debug.log"), "d\n").unwrap();
     std::fs::write(repo.workdir().unwrap().join("app.log"), "a\n").unwrap();

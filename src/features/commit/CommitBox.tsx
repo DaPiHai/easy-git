@@ -4,6 +4,7 @@ import { Checkbox } from '../../components';
 import { t } from '../../lib/i18n';
 import { humanizeEgError, type EgErrorLike } from '../../lib/ipc/errors';
 import { useLensStore } from '../../stores/lensStore';
+import { useMergeStore } from '../../stores/mergeStore';
 import { useRepoStore } from '../../stores/repoStore';
 import { useUiStore } from '../../stores/uiStore';
 import { toast } from '../../stores/toastStore';
@@ -27,6 +28,18 @@ export function CommitBox() {
   const [identityMissing, setIdentityMissing] = useState(false);
   const [partialFiles, setPartialFiles] = useState<string[] | null>(null);
   const subjectRef = useRef<HTMLInputElement>(null);
+
+  // F-26: finalizing a parked merge prefills the git merge message. Adjusted
+  // during render (React's state-from-props pattern), not in an effect.
+  const mergeState = useMergeStore((s) => s.mergeState);
+  const [prefilledMerge, setPrefilledMerge] = useState(false);
+  if (mergeState && !prefilledMerge) {
+    setPrefilledMerge(true);
+    setSubject(mergeState.message ?? '');
+  }
+  if (!mergeState && prefilledMerge) {
+    setPrefilledMerge(false);
+  }
 
   // Effective identity (repo-local falls back to global inside git2).
   useEffect(() => {
@@ -124,6 +137,8 @@ export function CommitBox() {
         placeholder={t('commit.subject.placeholder')}
         aria-label={t('commit.subject.placeholder')}
         data-testid="commit-subject"
+        disabled={mergeState !== null ? true : undefined}
+        title={mergeState ? t('conflict.finishDesc') : undefined}
         className="mt-eg-3 h-8 w-full rounded-md border border-hairline-strong bg-surface-1 px-eg-2 text-secondary text-ink outline-none placeholder:text-ink-tertiary focus:border-primary"
       />
       <textarea

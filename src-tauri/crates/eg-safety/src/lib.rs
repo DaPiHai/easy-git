@@ -28,6 +28,9 @@ pub enum OpKind {
     /// Deleted branch/tag; the name rides in `paths[0]` and the original
     /// target sits under `refs/easy-git/trash/<op_id>` (keeps OpKind Copy).
     RefDelete,
+    /// Hard reset: `paths[0]` is the pre-reset branch tip oid, the rest are
+    /// the file paths whose content the snapshot preserves.
+    Reset,
 }
 
 /// One append-only log line (`<root>/<repo-id>/operations.jsonl`).

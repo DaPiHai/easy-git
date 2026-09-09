@@ -302,3 +302,19 @@ IPC 序列化为 `{code, params, message_zh, hint?}`；前端 `lib/ipc/errors.ts
 | 7 | q() 反引号 bug | 模板字符串里的正则字符类含反引号（/([$"\\`])/）会提前闭合模板字面量，导致 shell 引用函数 q() 丢结尾引号——W4 起所有 lens 命令的引号都不闭合（本次 W7 测试断言暴露）。改为纯字符串拼接 + 正则 `[\\$"']`。 |
 | 8 | 分支看板形态 | judge 建议后去掉了独立 hero 卡：当前分支作为列表首行（✓ 图标 + primary 高亮 + 当前分支徽标），计数徽标与列表一致；当前分支右键仅重命名（不提供切换/删除）。 |
 | 9 | 测试 | Rust +5（branch CRUD/重命名移动 HEAD/回收站找回/当前分支拒删、switch 脏区与未跟踪冲突、tag 轻量+附注+回收站、stash 无损往返含 index reinstated、untracked stash）；前端 +6（refsStore：refresh/创建+lens/切换同步/dirty 无 toast/删除撤销链路/stash push）。快照 32-33 judge 通过（含「列表含 main」整改复验）。 |
+
+### 2026-09-09 · W8 合并 / 回退 / 冲突向导偏差记录
+
+| # | 条目 | 说明 |
+| --- | --- | --- |
+| 1 | 冲突停车模型 | merge_start 遇冲突时把 merge_commits 产出的**内存索引**逐条拷入磁盘索引（libgit2 的 merged index 不能直接 write），同时写 `.git/MERGE_HEAD`/`MERGE_MSG`（git 原生停车），并把冲突标记文件写入工作区（`<<<<<<< HEAD` / `>>>>>>> <branch>`；二进制文件保留 ours 内容）。真实 git CLI 造出的 mid-merge 仓库同样被识别（冒烟验证）。 |
+| 2 | 冲突解析载荷 | conflicts_get 返回三阶段内容（base/ours/theirs blob）+ 工作区标记解析出的 blocks/segments（segments.len == blocks.len+1，重组用）。conflict_resolve 写回文件 + conflict_remove + add_path + write，即完成暂存。 |
+| 3 | 合并收尾走提交路径 | commit() 读 MERGE_HEAD 附加第二父提交；mid-merge 时跳过「空暂存」与「部分暂存」守卫（git 同样允许空差异合并提交），并在成功后清除 MERGE_*。amend 与合并收尾互斥。 |
+| 4 | FF 与 no-ff | 默认快进优先（merge_analysis），checkout 用 safe + recreate_missing（本 fork 默认 SAFE 不含 recreate_missing，新增文件不会落盘——switch_branch 一并修正）；no_ff 勾选后即使可快进也创建双亲合并提交，干净合并自动提交并同步工作区。 |
+| 5 | revert 实现 | libgit2 `repo.revert` 的 ours 恒取 HEAD，多步 revert 无法堆叠暂存结果（报 uncommitted change overwritten）；改用 `merge_trees` 三方树合并：base=被回滚提交、theirs=其父、ours=当前索引树（等价 `git revert --no-commit` 的堆叠语义），结果写入磁盘索引并 force 检出工作区（起始树已由 ensure_clean 验证干净，序列中脏文件都是 revert 自身产物）。中途冲突整体回滚到原 HEAD 并报 ConflictState。 |
+| 6 | reset 三模式 | soft/mixed 不做快照（不破坏任何内容）；hard 先对「HEAD↔目标树差异路径」做 eg-safety 快照点，OpRecord kind=Reset，paths[0]=原 HEAD oid + 文件路径。撤销 = 从快照恢复文件 + mixed reset 回原 tip（分支移回、文件以未暂存形式出现）。undo_operation 签名改为 `&mut Repository`（W3/W7 测试调用点同步更新）。 |
+| 7 | 冲突向导形态 | 全屏接管主视图（mergeState 非空时 AppShell 渲染 ConflictWizard）；顶部进度 + 常驻「中止合并」（danger + 确认对话框）；文件 chips（已解决划线 ✓）；三栏 基础/我方/对方（色点标注）；逐块决策 用我的/用对方的/两者保留/手动编辑，已解决块降饱和+打勾；全部解决后出现「完成合并」→ 预填 git 合并消息的提交对话框（双亲提交）。进度模型用 knownPaths（累计见过）− 当前冲突集，兼容 resolve 后文件从冲突列表消失的时序。 |
+| 8 | DAG 右键接真 | 回滚此提交 = revert 单提交（结果进暂存区，toast 引导去变更页提交）；重置到此提交子菜单 = 混合重置（保留修改，直接执行）/ 硬重置（丢弃修改，红色确认 + 快照点 + 撤销 toast）。摘取（cherry-pick）仍未实现（本 fork 无 cherry_pick API，顺延 M2 记录）。 |
+| 9 | merge 安全默认 | 分支板右键「合并…」对话框默认快进优先，「总是创建合并提交（no-ff）」为可选勾选（F-26 简洁模式默认）；合并中 CommitBox 预填合并消息且输入框禁用（渲染期状态调整模式，规避 setState-in-effect lint）。 |
+| 10 | 冒烟与验收 | deb 安装后以 AT-SPI 无障碍树驱动真机（scrot 在 WSLg 抓屏全黑，弃用坐标盲操）：feature-flow-conflicted（真实 git CLI 停车）→ 向导接管 → 用我的 → 解决此文件 → 完成合并 → 双亲合并提交落盘、MERGE_HEAD 清除；重建 fixture 后 中止合并 → 工作区/HEAD 完全复原。14 张 W8 快照 judge 12 页全过。 |
+| 11 | 测试与已知问题 | Rust +12（ff/no-ff/干净分叉/停车/中止/块解析+双亲收尾/revert 单·多·回滚/reset 三模式/hard 撤销/已合并 noop+脏区拒绝），前端 +13（mergeStore 9、ConflictWizard 8、composeContent；Radix 右键菜单在 jsdom 挂死不可测，菜单接线由真机冒烟覆盖）。快照 harness 换 ephemeral WebKit context（旧缓存曾致 `__eg.mergeStore` 缺失）+ JS 错误可见化；f-string 注入 JS 的 `{{}}`/`\n` 转义为易错点。 |

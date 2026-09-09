@@ -3,8 +3,10 @@
 
 pub mod commit;
 pub mod config;
+pub mod conflicts;
 pub mod diff;
 pub mod log;
+pub mod merge;
 pub mod ops;
 pub mod refs;
 pub mod repo;

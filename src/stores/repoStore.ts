@@ -27,6 +27,7 @@ import {
   type StatusReport,
 } from '../lib/ipc/commands';
 import type { RepoChanged } from '../lib/ipc/bindings';
+import { useMergeStore } from './mergeStore';
 import type { ChangeEntry } from '../lib/ipc/commands';
 import { useLensStore } from './lensStore';
 import { toast } from './toastStore';
@@ -387,6 +388,7 @@ export const useRepoStore = create<RepoState>()((set, get) => {
       refreshTimer = setTimeout(() => {
         refreshTimer = null;
         void refreshActiveStatus();
+        void useMergeStore.getState().poll();
       }, 150);
     },
 

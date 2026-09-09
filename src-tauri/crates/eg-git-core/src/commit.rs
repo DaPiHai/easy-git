@@ -4,7 +4,7 @@
 use eg_types::{CommitOutcome, CommitRequest, EgError};
 use git2::Repository;
 
-use super::{repo, status};
+use super::{merge, repo, status};
 
 /// Files that are staged AND still carry unstaged edits: committing includes
 /// only the staged part, so `allow_partial` confirmation is required.
@@ -63,17 +63,35 @@ pub fn commit(
         });
     }
 
-    // Partial-staging guard: only the staged part would land.
+    // Merge finalize (R-19): a parked merge must be fully resolved first,
+    // and committing it creates the two-parent merge commit.
+    // On a read error treat as not mid-merge; the merge commit path will
+    // surface real problems when writing.
+    let mid_merge = merge::merge_state(repo).ok().flatten();
+    let mut index = repo.index().map_err(index_err("open"))?;
+    if let Some(state) = &mid_merge {
+        if index.has_conflicts() {
+            return Err(EgError::ConflictState {
+                state: format!(
+                    "还有未解决的冲突：{}",
+                    state.message.as_deref().unwrap_or("")
+                ),
+            });
+        }
+    }
+
+    // Partial-staging guard: only the staged part would land. Skipped while
+    // finalizing a merge — the worktree often keeps post-merge edits there.
     let partial = partially_staged(repo)?;
-    if !partial.is_empty() && !req.allow_partial && !amend {
+    if mid_merge.is_none() && !partial.is_empty() && !req.allow_partial && !amend {
         return Err(EgError::UnsafeOperation {
             confirm_required: format!("部分暂存：{}", partial.join("、")),
         });
     }
 
-    // Nothing to commit (index matches HEAD) — unless amending.
-    let mut index = repo.index().map_err(index_err("open"))?;
-    if !amend {
+    // Nothing to commit (index matches HEAD) — unless amending or finishing
+    // a merge (git also allows an empty-diff merge commit).
+    if !amend && mid_merge.is_none() {
         let head_tree = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
         let index_tree = index.write_tree().map_err(index_err("write tree"))?;
         if let Some(head_tree) = head_tree {
@@ -98,11 +116,20 @@ pub fn commit(
     let (parents, author): (Vec<git2::Commit<'_>>, git2::Signature) = match repo.head().ok() {
         Some(head) => {
             let head_commit = head.peel_to_commit().map_err(index_err("peel head"))?;
-            let parents: Vec<git2::Commit<'_>> = if amend {
+            let mut parents: Vec<git2::Commit<'_>> = if amend && mid_merge.is_none() {
                 head_commit.parents().collect()
             } else {
                 vec![head_commit.clone()]
             };
+            if mid_merge.is_some() {
+                // Merge commit: HEAD first, then every MERGE_HEAD tip.
+                for oid in merge::merge_head_oids(repo)? {
+                    parents.push(
+                        repo.find_commit(oid)
+                            .map_err(index_err("find merge head"))?,
+                    );
+                }
+            }
             // Amend keeps the original author (name/email/date), like real git.
             let author = if amend {
                 let orig = head_commit.author();
@@ -157,6 +184,11 @@ pub fn commit(
             context: format!("commit failed: {e}"),
         })?
     };
+
+    // Merge finalize completed: git-style cleanup of the parking files.
+    if mid_merge.is_some() {
+        merge::clear_merge_files(repo);
+    }
 
     Ok(CommitOutcome {
         commit_id: commit_id.to_string(),

@@ -237,7 +237,10 @@ pub fn switch_branch(
         .map_err(branch_err("set head"))?;
     // Safe checkout: only reachable with a clean worktree, but a conflict
     // (e.g. an untracked file racing in) still surfaces as dirty_worktree.
-    repo.checkout_head(Some(&mut CheckoutBuilder::new()))
+    // recreate_missing lets files added on the target branch appear.
+    let mut builder = CheckoutBuilder::new();
+    builder.recreate_missing(true);
+    repo.checkout_head(Some(&mut builder))
         .map_err(|_| EgError::DirtyWorktree { paths: Vec::new() })?;
     status::status(repo_id, repo)
 }

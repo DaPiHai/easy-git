@@ -177,7 +177,7 @@ pub fn clean(
 /// Restores the pre-operation content of a logged discard/clean op and marks
 /// the record undone (m1-plan W3 退出标准: 丢弃的修改可从快照点找回).
 pub fn undo_operation(
-    repo: &Repository,
+    repo: &mut Repository,
     repo_id: &str,
     safety: &eg_safety::Safety,
     op_id: &str,
@@ -197,9 +197,12 @@ pub fn undo_operation(
             feature: "该操作没有可恢复的快照".into(),
         });
     };
-    // Deleted branches/tags restore from their trash ref; worktree ops
-    // restore from backup snapshots.
-    if record.kind == eg_safety::OpKind::RefDelete {
+    // Deleted branches/tags restore from their trash ref; hard resets move
+    // the branch back and rebuild the doomed files; worktree ops restore
+    // from backup snapshots.
+    if record.kind == eg_safety::OpKind::Reset {
+        crate::merge::undo_reset(repo, &record)?;
+    } else if record.kind == eg_safety::OpKind::RefDelete {
         let Some(name) = record.paths.first() else {
             return Err(EgError::Internal {
                 context: "ref delete record is missing the name".into(),

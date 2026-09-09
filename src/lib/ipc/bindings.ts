@@ -90,6 +90,31 @@ export const commands = {
 	stashApply: (repoId: string, index: number, pop: boolean) => typedError<StatusReport, EgError>(__TAURI_INVOKE("stash_apply", { repoId, index, pop })),
 	/**  Drops a stash entry after explicit confirmation (m1-plan R-18). */
 	stashDrop: (repoId: string, index: number) => typedError<StashEntry[], EgError>(__TAURI_INVOKE("stash_drop", { repoId, index })),
+	/**
+	 *  Starts merging `name` into the current branch (m1-plan R-19). A conflicted
+	 *  merge parks itself (`MERGE_HEAD` + conflict index) and reports its files.
+	 */
+	mergeStart: (repoId: string, name: string, noFf: boolean) => typedError<MergeOutcome, EgError>(__TAURI_INVOKE("merge_start", { repoId, name, noFf })),
+	/**  Merge progress while parked on conflicts (m1-plan R-19 / F-24). */
+	mergeState: (repoId: string) => typedError<{
+	/**  Prefilled merge commit message (from MERGE_MSG). */
+	message: string | null,
+	/**  Names (or short oids) of the branches being merged in. */
+	theirs: string[],
+} | null, EgError>(__TAURI_INVOKE("merge_state", { repoId })),
+	/**  Aborts a parked merge and hard-resets to the pre-merge state (R-19). */
+	mergeAbort: (repoId: string) => typedError<StatusReport, EgError>(__TAURI_INVOKE("merge_abort", { repoId })),
+	/**  Conflicted files with three-stage contents and parsed blocks (R-21 / F-24). */
+	conflictsGet: (repoId: string) => typedError<ConflictFile[], EgError>(__TAURI_INVOKE("conflicts_get", { repoId })),
+	/**  Writes one resolved conflict file and stages it (m1-plan R-21). */
+	conflictResolve: (repoId: string, path: string, content: string) => typedError<StatusReport, EgError>(__TAURI_INVOKE("conflict_resolve", { repoId, path, content })),
+	/**  Reverts the given commits into the index + worktree (m1-plan R-20). */
+	revertCommits: (repoId: string, oids: string[]) => typedError<StatusReport, EgError>(__TAURI_INVOKE("revert_commits", { repoId, oids })),
+	/**
+	 *  Resets to `target` with the three git modes (m1-plan R-20). Hard resets
+	 *  snapshot first and return an op id for the 撤销 toast.
+	 */
+	resetCommits: (repoId: string, mode: ResetMode, target: string | null) => typedError<ResetOutcome, EgError>(__TAURI_INVOKE("reset_commits", { repoId, mode, target })),
 };
 
 /** Events */
@@ -217,6 +242,30 @@ export type CommitRequest = {
 /**  Which config file a get/set targets (m1-plan R-09). */
 export type ConfigScope = "repo" | "global";
 
+/**  One `<<<<<<<…=======…>>>>>>>` region of a conflicted file (m1-plan R-21). */
+export type ConflictBlock = {
+	/**  Lines from our side (between <<<<<<< and =======). */
+	ours: string[],
+	/**  Lines from their side (between ======= and >>>>>>>). */
+	theirs: string[],
+};
+
+/**  One conflicted file for the wizard (m1-plan R-21 / F-24). */
+export type ConflictFile = {
+	path: string,
+	/**  Full three-stage contents when available (IndexConflict stages). */
+	baseContent: string | null,
+	oursContent: string | null,
+	theirsContent: string | null,
+	/**
+	 *  Marker-parsed regions; `segments.len() == blocks.len() + 1` when the
+	 *  file was parseable, so composing is segments interleaved with blocks.
+	 */
+	segments: string[],
+	blocks: ConflictBlock[],
+	isBinary: boolean,
+};
+
 export type DiffHunk = {
 	/**  Original `@@ -a,b +c,d @@ ctx` header text. */
 	header: string,
@@ -339,6 +388,23 @@ export type LogPage = {
 	branch: string | null,
 };
 
+/**  Result of starting a merge (m1-plan R-19). */
+export type MergeOutcome = {
+	/**  True when the branch was fast-forwarded (no merge commit created). */
+	fastForwarded: boolean,
+	/**  Conflicted paths when the merge stopped for manual resolution. */
+	conflicts: string[],
+	status: StatusReport,
+};
+
+/**  Mid-merge state detected from `.git/MERGE_HEAD` (m1-plan R-19/F-24). */
+export type MergeState = {
+	/**  Prefilled merge commit message (from MERGE_MSG). */
+	message: string | null,
+	/**  Names (or short oids) of the branches being merged in. */
+	theirs: string[],
+};
+
 /**  The frontend refreshes status for `repo_id` (debounced 300ms upstream). */
 export type RepoChanged = {
 	repoId: string,
@@ -358,6 +424,20 @@ export type RepoSummary = {
 	behind: number,
 	/**  True when the repository has no commits yet (unborn HEAD). */
 	isEmpty: boolean,
+};
+
+export type ResetMode = 
+/**  Move HEAD only; index keeps the changes (撤销最近一次提交，保留暂存). */
+"soft" | 
+/**  Move HEAD + reset index; worktree untouched (修改留在工作区). */
+"mixed" | 
+/**  Move HEAD + index + worktree; destructive, snapshot-protected. */
+"hard";
+
+/**  Result of a reset; `op_id` is Some for hard resets (撤销 toast). */
+export type ResetOutcome = {
+	opId: string | null,
+	status: StatusReport,
 };
 
 /**

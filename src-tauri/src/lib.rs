@@ -52,6 +52,13 @@ pub fn run() {
             commands::stash_push,
             commands::stash_apply,
             commands::stash_drop,
+            commands::merge_start,
+            commands::merge_state,
+            commands::merge_abort,
+            commands::conflicts_get,
+            commands::conflict_resolve,
+            commands::revert_commits,
+            commands::reset_commits,
         ])
         .events(collect_events![events::RepoChanged])
         .error_handling(ErrorHandlingMode::Result);

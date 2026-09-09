@@ -373,3 +373,69 @@ pub struct StashEntry {
     pub message: String,
     pub oid: String,
 }
+
+/// Result of starting a merge (m1-plan R-19).
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeOutcome {
+    /// True when the branch was fast-forwarded (no merge commit created).
+    pub fast_forwarded: bool,
+    /// Conflicted paths when the merge stopped for manual resolution.
+    pub conflicts: Vec<String>,
+    pub status: StatusReport,
+}
+
+/// Mid-merge state detected from `.git/MERGE_HEAD` (m1-plan R-19/F-24).
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeState {
+    /// Prefilled merge commit message (from MERGE_MSG).
+    pub message: Option<String>,
+    /// Names (or short oids) of the branches being merged in.
+    pub theirs: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum ResetMode {
+    /// Move HEAD only; index keeps the changes (撤销最近一次提交，保留暂存).
+    Soft,
+    /// Move HEAD + reset index; worktree untouched (修改留在工作区).
+    Mixed,
+    /// Move HEAD + index + worktree; destructive, snapshot-protected.
+    Hard,
+}
+
+/// Result of a reset; `op_id` is Some for hard resets (撤销 toast).
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ResetOutcome {
+    pub op_id: Option<String>,
+    pub status: StatusReport,
+}
+
+/// One `<<<<<<<…=======…>>>>>>>` region of a conflicted file (m1-plan R-21).
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ConflictBlock {
+    /// Lines from our side (between <<<<<<< and =======).
+    pub ours: Vec<String>,
+    /// Lines from their side (between ======= and >>>>>>>).
+    pub theirs: Vec<String>,
+}
+
+/// One conflicted file for the wizard (m1-plan R-21 / F-24).
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ConflictFile {
+    pub path: String,
+    /// Full three-stage contents when available (IndexConflict stages).
+    pub base_content: Option<String>,
+    pub ours_content: Option<String>,
+    pub theirs_content: Option<String>,
+    /// Marker-parsed regions; `segments.len() == blocks.len() + 1` when the
+    /// file was parseable, so composing is segments interleaved with blocks.
+    pub segments: Vec<String>,
+    pub blocks: Vec<ConflictBlock>,
+    pub is_binary: bool,
+}

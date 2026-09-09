@@ -41,6 +41,13 @@ fn main() {
             easy_git::commands::stash_push,
             easy_git::commands::stash_apply,
             easy_git::commands::stash_drop,
+            easy_git::commands::merge_start,
+            easy_git::commands::merge_state,
+            easy_git::commands::merge_abort,
+            easy_git::commands::conflicts_get,
+            easy_git::commands::conflict_resolve,
+            easy_git::commands::revert_commits,
+            easy_git::commands::reset_commits,
         ])
         .events(collect_events![easy_git::events::RepoChanged])
         .error_handling(ErrorHandlingMode::Result);

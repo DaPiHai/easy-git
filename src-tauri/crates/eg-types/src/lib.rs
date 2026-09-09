@@ -10,10 +10,11 @@ mod dto;
 
 pub use dto::{
     AppVersion, BranchInfo, ChangeEntry, ChangeKind, CommitDetail, CommitFile, CommitLogEntry,
-    CommitOutcome, CommitRefs, CommitRequest, ConfigScope, DiffHunk, DiffLine, DiffLineKind,
-    DiffRequest, DiffResponse, DiffSourceKind, GraphLine, GraphNode, IgnoreMode, LogFilter,
-    LogPage, RepoId, RepoSummary, SelectedHunk, StageLinesRequest, StageMode, StashEntry,
-    StatusReport, TagInfo, WordSpan,
+    CommitOutcome, CommitRefs, CommitRequest, ConfigScope, ConflictBlock, ConflictFile, DiffHunk,
+    DiffLine, DiffLineKind, DiffRequest, DiffResponse, DiffSourceKind, GraphLine, GraphNode,
+    IgnoreMode, LogFilter, LogPage, MergeOutcome, MergeState, RepoId, RepoSummary, ResetMode,
+    ResetOutcome, SelectedHunk, StageLinesRequest, StageMode, StashEntry, StatusReport, TagInfo,
+    WordSpan,
 };
 
 #[cfg(test)]

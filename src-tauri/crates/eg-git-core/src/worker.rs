@@ -18,7 +18,7 @@ use eg_types::{ConfigScope, EgError, IgnoreMode, RepoId, RepoSummary, StageMode,
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use uuid::Uuid;
 
-use super::{commit, config, diff, log, ops, refs, repo, stash, status};
+use super::{commit, config, conflicts, diff, log, merge, ops, refs, repo, stash, status};
 
 /// Quiet period before a burst of filesystem events triggers one change event.
 pub const FS_DEBOUNCE: Duration = Duration::from_millis(300);
@@ -146,6 +146,35 @@ enum RepoCommand {
     StashDrop {
         index: u32,
         reply: Sender<Result<Vec<eg_types::StashEntry>, EgError>>,
+    },
+    MergeStart {
+        name: String,
+        no_ff: bool,
+        reply: Sender<Result<eg_types::MergeOutcome, EgError>>,
+    },
+    MergeState {
+        reply: Sender<Result<Option<eg_types::MergeState>, EgError>>,
+    },
+    MergeAbort {
+        reply: Sender<Result<StatusReport, EgError>>,
+    },
+    ConflictsGet {
+        reply: Sender<Result<Vec<eg_types::ConflictFile>, EgError>>,
+    },
+    ConflictResolve {
+        path: String,
+        content: String,
+        reply: Sender<Result<StatusReport, EgError>>,
+    },
+    Revert {
+        oids: Vec<String>,
+        reply: Sender<Result<StatusReport, EgError>>,
+    },
+    ResetCmd {
+        mode: eg_types::ResetMode,
+        target: Option<String>,
+        safety: Arc<eg_safety::Safety>,
+        reply: Sender<Result<eg_types::ResetOutcome, EgError>>,
     },
     Close(Sender<()>),
 }
@@ -380,6 +409,52 @@ impl WorkerHandle {
         self.request(|reply| RepoCommand::StashDrop { index, reply })
     }
 
+    pub fn merge_start(
+        &self,
+        name: String,
+        no_ff: bool,
+    ) -> Result<eg_types::MergeOutcome, EgError> {
+        self.request(|reply| RepoCommand::MergeStart { name, no_ff, reply })
+    }
+
+    pub fn merge_state(&self) -> Result<Option<eg_types::MergeState>, EgError> {
+        self.request(|reply| RepoCommand::MergeState { reply })
+    }
+
+    pub fn merge_abort(&self) -> Result<StatusReport, EgError> {
+        self.request(|reply| RepoCommand::MergeAbort { reply })
+    }
+
+    pub fn conflicts_get(&self) -> Result<Vec<eg_types::ConflictFile>, EgError> {
+        self.request(|reply| RepoCommand::ConflictsGet { reply })
+    }
+
+    pub fn conflict_resolve(&self, path: String, content: String) -> Result<StatusReport, EgError> {
+        self.request(|reply| RepoCommand::ConflictResolve {
+            path,
+            content,
+            reply,
+        })
+    }
+
+    pub fn revert(&self, oids: Vec<String>) -> Result<StatusReport, EgError> {
+        self.request(|reply| RepoCommand::Revert { oids, reply })
+    }
+
+    pub fn reset(
+        &self,
+        mode: eg_types::ResetMode,
+        target: Option<String>,
+        safety: Arc<eg_safety::Safety>,
+    ) -> Result<eg_types::ResetOutcome, EgError> {
+        self.request(|reply| RepoCommand::ResetCmd {
+            mode,
+            target,
+            safety,
+            reply,
+        })
+    }
+
     fn request<T>(
         &self,
         make: impl FnOnce(Sender<Result<T, EgError>>) -> RepoCommand,
@@ -553,7 +628,7 @@ fn run_loop(
                 reply,
             }) => {
                 let _ = reply.send(
-                    ops::undo_operation(&repo, &repo_id, &safety, &op_id)
+                    ops::undo_operation(&mut repo, &repo_id, &safety, &op_id)
                         .and_then(|()| status::status(&repo_id, &repo)),
                 );
             }
@@ -652,6 +727,44 @@ fn run_loop(
             }
             Ok(RepoCommand::StashDrop { index, reply }) => {
                 let _ = reply.send(stash::stash_drop(&mut repo, index));
+            }
+            Ok(RepoCommand::MergeStart { name, no_ff, reply }) => {
+                let _ = reply.send(merge::merge_start(&mut repo, &repo_id, &name, no_ff));
+            }
+            Ok(RepoCommand::MergeState { reply }) => {
+                let _ = reply.send(merge::merge_state(&repo));
+            }
+            Ok(RepoCommand::MergeAbort { reply }) => {
+                let _ = reply.send(merge::merge_abort(&mut repo, &repo_id));
+            }
+            Ok(RepoCommand::ConflictsGet { reply }) => {
+                let _ = reply.send(conflicts::conflicts_get(&repo, &repo_id));
+            }
+            Ok(RepoCommand::ConflictResolve {
+                path,
+                content,
+                reply,
+            }) => {
+                let _ = reply.send(conflicts::conflict_resolve(
+                    &repo, &repo_id, &path, &content,
+                ));
+            }
+            Ok(RepoCommand::Revert { oids, reply }) => {
+                let _ = reply.send(merge::revert_commits(&mut repo, &repo_id, &oids));
+            }
+            Ok(RepoCommand::ResetCmd {
+                mode,
+                target,
+                safety,
+                reply,
+            }) => {
+                let _ = reply.send(merge::reset(
+                    &mut repo,
+                    &repo_id,
+                    mode,
+                    target.as_deref(),
+                    &safety,
+                ));
             }
             Ok(RepoCommand::Close(tx)) => {
                 let _ = tx.send(());

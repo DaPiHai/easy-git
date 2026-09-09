@@ -12,6 +12,8 @@ import {
   type CommitLogEntry,
   type CommitOutcome,
   type CommitRequest,
+  type ConflictBlock,
+  type ConflictFile,
   type ConfigScope,
   type DiffRequest,
   type DiffResponse,
@@ -20,7 +22,11 @@ import {
   type IgnoreMode,
   type LogFilter,
   type LogPage,
+  type MergeOutcome,
+  type MergeState,
   type RepoSummary,
+  type ResetMode,
+  type ResetOutcome,
   type StageLinesRequest,
   type StageMode,
   type StatusReport,
@@ -38,6 +44,8 @@ export type {
   CommitOutcome,
   CommitRequest,
   ConfigScope,
+  ConflictBlock,
+  ConflictFile,
   DiffRequest,
   DiffResponse,
   DiscardOutcome,
@@ -45,7 +53,11 @@ export type {
   IgnoreMode,
   LogFilter,
   LogPage,
+  MergeOutcome,
+  MergeState,
   RepoSummary,
+  ResetMode,
+  ResetOutcome,
   StageLinesRequest,
   StageMode,
   StatusReport,
@@ -316,6 +328,60 @@ export async function stashDrop(repoId: string, index: number): Promise<StashEnt
 }
 
 /** Native directory picker; null when cancelled or outside the Tauri shell. */
+export async function mergeStart(
+  repoId: string,
+  name: string,
+  noFf: boolean,
+): Promise<MergeOutcome> {
+  const r = await commands.mergeStart(repoId, name, noFf);
+  if (r.status === 'error') throw r.error;
+  return r.data;
+}
+
+export async function mergeStateGet(repoId: string): Promise<MergeState | null> {
+  const r = await commands.mergeState(repoId);
+  if (r.status === 'error') throw r.error;
+  return r.data;
+}
+
+export async function mergeAbort(repoId: string): Promise<StatusReport> {
+  const r = await commands.mergeAbort(repoId);
+  if (r.status === 'error') throw r.error;
+  return r.data;
+}
+
+export async function conflictsGet(repoId: string): Promise<ConflictFile[]> {
+  const r = await commands.conflictsGet(repoId);
+  if (r.status === 'error') throw r.error;
+  return r.data;
+}
+
+export async function conflictResolve(
+  repoId: string,
+  path: string,
+  content: string,
+): Promise<StatusReport> {
+  const r = await commands.conflictResolve(repoId, path, content);
+  if (r.status === 'error') throw r.error;
+  return r.data;
+}
+
+export async function revertCommits(repoId: string, oids: string[]): Promise<StatusReport> {
+  const r = await commands.revertCommits(repoId, oids);
+  if (r.status === 'error') throw r.error;
+  return r.data;
+}
+
+export async function resetCommits(
+  repoId: string,
+  mode: ResetMode,
+  target: string | null,
+): Promise<ResetOutcome> {
+  const r = await commands.resetCommits(repoId, mode, target);
+  if (r.status === 'error') throw r.error;
+  return r.data;
+}
+
 export async function pickDirectory(title: string): Promise<string | null> {
   if (!isTauriAvailable()) return null;
   const selection = await dialogOpen({ directory: true, multiple: false, title });
