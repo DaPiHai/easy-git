@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useSyncStore } from './syncStore';
+import { clearCachedCredentials, useSyncStore } from './syncStore';
 import { useRepoStore } from './repoStore';
 import { useToastStore } from './toastStore';
 import type {
@@ -58,6 +58,7 @@ function ffOutcome(): MergeOutcome {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  clearCachedCredentials();
   useToastStore.setState({ toasts: [] });
   useRepoStore.getState().seed({ activeId: 'r1' });
   useSyncStore.setState({
@@ -136,6 +137,61 @@ describe('syncStore push', () => {
     });
     const result = await useSyncStore.getState().push('origin', 'main', true);
     expect(result).toBe('ok');
+  });
+
+  it('retries with dialog credentials after an auth rejection', async () => {
+    pushMock.mockRejectedValueOnce({ code: 'auth', provider: 'git' });
+    pushMock.mockImplementation((_repoId, _remote, _branch, _force, creds) => {
+      expect(creds).toEqual({ username: '老用户', password: 's3cret' });
+      return Promise.resolve(cleanStatus());
+    });
+    const pending = useSyncStore.getState().push('origin', 'main', false);
+    // The auth fallback opens the credentials dialog via store state.
+    await vi.waitFor(() => {
+      expect(useSyncStore.getState().credentialsRequest).not.toBeNull();
+    });
+    useSyncStore.getState().credentialsRequest?.resolve({ username: '老用户', password: 's3cret' });
+    const result = await pending;
+    expect(result).toBe('ok');
+    expect(useSyncStore.getState().credentialsRequest).toBeNull();
+    expect(pushMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('reuses the cached session credential without prompting again', async () => {
+    // First push caches the credential via the dialog flow…
+    pushMock.mockRejectedValueOnce({ code: 'auth', provider: 'git' });
+    pushMock.mockImplementation((_repoId, _remote, _branch, _force, creds) => {
+      expect(creds).toEqual({ username: '老用户', password: 's3cret' });
+      return Promise.resolve(cleanStatus());
+    });
+    const first = useSyncStore.getState().push('origin', 'main', false);
+    await vi.waitFor(() => {
+      expect(useSyncStore.getState().credentialsRequest).not.toBeNull();
+    });
+    useSyncStore.getState().credentialsRequest?.resolve({ username: '老用户', password: 's3cret' });
+    expect(await first).toBe('ok');
+    // …so the second push retries ambiently with the cached value.
+    pushMock.mockClear();
+    pushMock.mockImplementation((_repoId, _remote, _branch, _force, creds) => {
+      expect(creds).toEqual({ username: '老用户', password: 's3cret' });
+      return Promise.resolve(cleanStatus());
+    });
+    const result = await useSyncStore.getState().push('origin', 'main', false);
+    expect(result).toBe('ok');
+    expect(useSyncStore.getState().credentialsRequest).toBeNull();
+  });
+
+  it('dismissing the credentials dialog returns cancelled quietly', async () => {
+    // A bad cached credential fails again, forcing a fresh prompt.
+    pushMock.mockRejectedValue({ code: 'auth', provider: 'git' });
+    const pending = useSyncStore.getState().push('other', 'main', false);
+    await vi.waitFor(() => {
+      expect(useSyncStore.getState().credentialsRequest).not.toBeNull();
+    });
+    useSyncStore.getState().credentialsRequest?.resolve(null);
+    const result = await pending;
+    expect(result).toBe('cancelled');
+    expect(useToastStore.getState().toasts).toHaveLength(0);
   });
 });
 

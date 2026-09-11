@@ -24,6 +24,7 @@ import {
   type LogPage,
   type MergeOutcome,
   type MergeState,
+  type PushCredentials,
   type RepoSummary,
   type ResetMode,
   type ResetOutcome,
@@ -414,13 +415,16 @@ export async function pullRemote(
   return r.data;
 }
 
+export type { PushCredentials };
+
 export async function pushRemote(
   repoId: string,
   remote: string,
   branch: string,
   force: boolean,
+  credentials?: PushCredentials | null,
 ): Promise<StatusReport> {
-  const r = await commands.syncPush(repoId, remote, branch, force);
+  const r = await commands.syncPush(repoId, remote, branch, force, credentials ?? null);
   if (r.status === 'error') throw r.error;
   return r.data;
 }

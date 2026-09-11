@@ -100,7 +100,7 @@ git2 `Repository` 非 `Sync`，且多数操作互斥。采用 **RepoWorker**：�
 | 远程 | fetch/pull/push（进度、浅获取选项）、remote CRUD、凭据回调 | git2 传输 + keyring 凭据 |
 | 引用 | reflog 读取、update-ref（安全引擎内部） | git2 |
 
-CLI 桥统一约束：`tokio::process`、环境变量固定（`GIT_TERMINAL_PROMPT=0`）、超时与取消、`--porcelain`/`--json` 输出解析、进度 stderr 解析（`GIT_TRACE` 不开启）。
+CLI 桥统一约束：`tokio::process`、环境变量固定（`GIT_TERMINAL_PROMPT=0`）、超时与取消、`--porcelain`/`--json` 输出解析、进度 stderr 解析（`GIT_TRACE` 不开启）、**所有控制台子进程一律经 `eg_git_core::process::hidden_command` 创建**（Windows 传 `CREATE_NO_WINDOW`；release 下应用是 GUI 子系统、自身无控制台，裸 spawn 会让 Windows 给 git 子进程新建可见控制台，表现为每次 git 操作与空闲 `gc` 都闪一个空白 cmd 窗口；隐藏控制台会被 askpass 等后代继承，故不用 `DETACHED_PROCESS`）。
 
 ### 4.3 eg-safety：安全引擎（PRD §4.4 落地）
 
@@ -348,3 +348,4 @@ IPC 序列化为 `{code, params, message_zh, hint?}`；前端 `lib/ipc/errors.ts
 | 6 | X-05 RC 收尾 | 版本升 0.1.0-rc.1（tauri.conf + workspace Cargo.toml）；Linux 双包 deb 5.9MB + AppImage 84.8MB（AppImage 含运行时体积超 30MB 口径，deb 达标）。README 更新 M1 RC 状态 + 未签名说明（SmartScreen/Gatekeeper 绕过指引）。exe/msi/dmg 需 Windows/macOS 机器（待办）；git tag 留待 5 人测试通过后补。w4 缺身份测试改用 libgit2 `set_search_path` 密封（GIT_CONFIG_GLOBAL 对 libgit2 无效；冒烟期间设置的全局身份不再影响测试）。 |
 | 7 | 已知问题清单（同步 M2 范围） | ① 视图快捷键 WebKitGTK 不触发（Alt+1..6 待真桌面复验）② 空闲内存 PRD 口径待修订（建议主进程 ≤200MB）③ AppImage 体积口径 ④ R-23 keyring/HTTPS token 托管顺延 M2 ⑤ pull 变基选项置灰（M2）⑥ CLI 网络操作无超时/取消（PRD §4.2 要求，M2）⑦ 测试环境输入管线不稳（仅 WSLg 测试环境）。PRD §10 未决项（签名/应急终端/历史重写/LFS）保持开放，未经用户决策不改。 |
 | 8 | rc.2 用户反馈修复 | 首批真人试用四项反馈：① 侧栏「克隆仓库」仍是 W2 的 disabled 占位——CloneDialog 提升为 AppShell 级全局挂载（uiStore.cloneDialogOpen），向导卡片与侧栏入口共用；② 窄窗口下分支行「当前分支」徽标竖排换行——Badge 基类加 shrink-0/whitespace-nowrap，分支名 span 补 min-w-0；③ 变更页蓝线不停闪——LoadingBar 只在首载（无 status）与手动刷新（Ctrl+R）出现，fs-watch 后台刷新静默；④ 远程页「测试连接无反应/获取后按钮灰卡」——根因是 CLI 网络命令无超时（用户网络下 ls-remote/fetch 挂起，busy 永不清除，PRD §4.2 欠账）：run() 加 try_wait 轮询超时（ls-remote 45s / fetch·push·push_restore 300s / clone 600s / 本地 gc 900s），超时 kill 并人话化报错；toast 真机渲染已证实正常（「已获取 origin」截图）。真机复验：侧栏克隆弹窗 ✓、51 分支单行 ✓、后台刷新无蓝线且状态实时 ✓、获取后 toast+按钮恢复 ✓。 |
+| 9 | R-22 推送 HTTPS 用户名/密码回退 | 部分老服务器 HTTPS 推送需要用户名+密码（系统凭据助手无缓存时旧行为是卡到 300s 超时或无出路的 Auth toast）。方案：首次仍走 ambient；`auth` 拒绝后弹凭据框（用户名+密码，`sync.auth*` 文案），提交后带凭据重试一次，成功则记入**进程会话内存**（Map<repo,remote>，关闭应用即清，不落盘——R-23「不存储密钥」deferral 依然成立，keyring 托管仍顺延 M2）。后端经临时 askpass 脚本注入（Windows .bat / Unix sh，prompt 含 User→用户名否则→密码，Unix 0600，单次调用唯一目录防并发撞车，Drop 守卫保证用后删除），子进程统一 `GIT_TERMINAL_PROMPT=0` + stdin null（TDD §4.2 桥约定补上：缺凭据快速失败不再垂死超时）。秘密不进 argv/日志/lens/op-log/timeline。范围仅 push（含强推预检 fetch/ls_remote 同次复用）；`push_restore`（undo 强推）与 fetch/pull/clone 仍 ambient，是已知局限。IPC：`sync_push` 新增 `credentials: PushCredentials|null`（bindings 重生成，CI 漂移门）。前端 `push()` 新增 `'auth'|'cancelled'` 返回（取消静默收场；二次 auth 失败 toast `sync.authFailed`）。测试：askpass 单测 3 例 + syncStore 对话框/缓存/取消 3 例 + file:// 回归（带 creds 推不断言破坏）。 |

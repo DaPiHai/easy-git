@@ -10,6 +10,7 @@ import { QuickSwitcher } from '../palette/QuickSwitcher';
 import { TopBar } from './TopBar';
 import { OpenRepoWizard } from '../repo/OpenRepoWizard';
 import { CloneDialog } from '../repo/CloneDialog';
+import { CredentialsDialog } from './CredentialsDialog';
 import { ConflictWizard } from '../conflicts/ConflictWizard';
 import { useMergeStore } from '../../stores/mergeStore';
 import { useSyncStore } from '../../stores/syncStore';
@@ -88,6 +89,7 @@ export function AppShell() {
       <BottomBar />
       <QuickSwitcher />
       <CloneDialog />
+      <CredentialsDialog />
       <ToastHost />
     </div>
   );

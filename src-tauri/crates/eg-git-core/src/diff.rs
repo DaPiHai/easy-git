@@ -457,11 +457,12 @@ fn apply_to_index(repo: &Repository, patch: &str) -> Result<(), EgError> {
     let workdir = repo.workdir().ok_or_else(|| EgError::Internal {
         context: "bare repository has no worktree".into(),
     })?;
-    let mut child = std::process::Command::new("git")
+    let mut child = crate::process::hidden_command("git")
         .arg("-C")
         .arg(workdir)
         .args(["apply", "--cached", "--unidiff-zero", "--recount", "-"])
         .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| EgError::Internal {

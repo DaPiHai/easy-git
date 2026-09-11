@@ -450,6 +450,16 @@ pub struct RemoteInfo {
     pub push_url: Option<String>,
 }
 
+/// HTTPS username/password for pushing to legacy servers (R-22 auth
+/// fallback). Session-memory only on the frontend: never persisted, never
+/// logged, and forwarded to the git CLI via an ephemeral askpass helper.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PushCredentials {
+    pub username: String,
+    pub password: String,
+}
+
 /// How pull integrates a fetched upstream (F-27 分叉情况选择).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "snake_case")]

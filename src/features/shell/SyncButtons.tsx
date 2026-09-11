@@ -35,11 +35,14 @@ export function SyncButtons({ hasActiveRepo }: { hasActiveRepo: boolean }) {
 
   const onPush = async () => {
     const result = await push(remote, branch, false);
+    // 'rejected' opens the 强推 dialog; 'auth' means the credential retry
+    // also failed (toast already shown); 'cancelled' is a quiet dismiss.
     if (result === 'rejected') setForceOpen(true);
   };
 
   const onForcePush = async () => {
     const result = await push(remote, branch, true);
+    if (result === 'rejected') return; // still refused; keep the dialog open
     if (result === 'ok') {
       setForceOpen(false);
       // The rollback anchor was recorded server-side; surface it as undo.

@@ -129,8 +129,14 @@ export const commands = {
 	/**
 	 *  Pushes the current branch (R-22). Force pushes record the pre-push remote
 	 *  tip in eg-safety first (强推可回滚): undo pushes the old tip back.
+	 * 
+	 *  `credentials` is the optional one-shot HTTPS user/password for legacy
+	 *  servers; None keeps the ambient system helpers. It is never logged.
 	 */
-	syncPush: (repoId: string, remote: string, branch: string, force: boolean) => typedError<StatusReport, EgError>(__TAURI_INVOKE("sync_push", { repoId, remote, branch, force })),
+	syncPush: (repoId: string, remote: string, branch: string, force: boolean, credentials: {
+	username: string,
+	password: string,
+} | null) => typedError<StatusReport, EgError>(__TAURI_INVOKE("sync_push", { repoId, remote, branch, force, credentials })),
 	/**  Connectivity test (R-24): `git ls-remote`, reports ref count. */
 	remoteTest: (repoId: string, remote: string) => typedError<number, EgError>(__TAURI_INVOKE("remote_test", { repoId, remote })),
 	/**  Clones a repository (W2 顺延 + m1-plan R-22), then opens it (F-06 clone 入口). */
@@ -442,6 +448,16 @@ export type MergeState = {
 	message: string | null,
 	/**  Names (or short oids) of the branches being merged in. */
 	theirs: string[],
+};
+
+/**
+ *  HTTPS username/password for pushing to legacy servers (R-22 auth
+ *  fallback). Session-memory only on the frontend: never persisted, never
+ *  logged, and forwarded to the git CLI via an ephemeral askpass helper.
+ */
+export type PushCredentials = {
+	username: string,
+	password: string,
 };
 
 /**  One configured remote (m1-plan R-24 / F-29). */

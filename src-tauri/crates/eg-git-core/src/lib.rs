@@ -8,6 +8,7 @@ pub mod diff;
 pub mod log;
 pub mod merge;
 pub mod ops;
+pub mod process;
 pub mod refs;
 pub mod remote;
 pub mod repo;

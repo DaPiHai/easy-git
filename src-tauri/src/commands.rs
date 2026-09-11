@@ -589,8 +589,12 @@ pub async fn sync_pull(
 
 /// Pushes the current branch (R-22). Force pushes record the pre-push remote
 /// tip in eg-safety first (强推可回滚): undo pushes the old tip back.
+///
+/// `credentials` is the optional one-shot HTTPS user/password for legacy
+/// servers; None keeps the ambient system helpers. It is never logged.
 #[tauri::command]
 #[specta::specta]
+#[allow(clippy::too_many_arguments)]
 pub async fn sync_push(
     app: AppHandle,
     manager: State<'_, RepoManager>,
@@ -599,6 +603,7 @@ pub async fn sync_push(
     remote: String,
     branch: String,
     force: bool,
+    credentials: Option<eg_types::PushCredentials>,
 ) -> Result<StatusReport, EgError> {
     let handle = manager.get(&repo_id)?;
     let path = handle.canonical_path.clone();
@@ -615,6 +620,7 @@ pub async fn sync_push(
             force,
             &safety_for_task,
             Some(&tx),
+            credentials.as_ref(),
         )
     })
     .await;

@@ -315,6 +315,12 @@ export const zhCN = {
   'sync.forceDesc':
     '远端有本地没有的提交，普通推送被拒绝。强制推送会以本地覆盖远端（先记录远端原状，可一键恢复）。',
   'sync.forceConfirm': '强制推送',
+  'sync.authTitle': '需要登录 {remote}',
+  'sync.authDesc': '远端拒绝了当前凭据（常见于需要用户名和密码的老服务器）。请输入该远端的账号密码，仅用于本次会话，不会保存到磁盘。',
+  'sync.authUsername': '用户名',
+  'sync.authPassword': '密码',
+  'sync.authConfirm': '使用该凭据重试',
+  'sync.authFailed': '该凭据仍被拒绝，请检查后重试',
   'sync.task.fetch': '获取',
   'sync.task.pull': '拉取',
   'sync.task.push': '推送',

@@ -159,8 +159,17 @@ fn fetch_and_push_roundtrip_via_bare_origin() {
     std::fs::write(f.work_path.join("c.txt"), "local\n").unwrap();
     git(&f.work_path, &["add", "."]);
     git(&f.work_path, &["commit", "-q", "-m", "local commit"]);
-    remote::push_with_rollback(&f.work_path, "r1", "origin", "main", false, &f.safety, None)
-        .unwrap();
+    remote::push_with_rollback(
+        &f.work_path,
+        "r1",
+        "origin",
+        "main",
+        false,
+        &f.safety,
+        None,
+        None,
+    )
+    .unwrap();
     let origin_main = git_out(&f.origin_path, &["log", "--format=%s", "-1", "main"]);
     assert!(origin_main.contains("local commit"));
 
@@ -306,8 +315,17 @@ fn force_push_records_rollback_anchor_and_undo_restores_remote() {
             .unwrap();
     }
 
-    remote::push_with_rollback(&f.work_path, "r1", "origin", "main", true, &f.safety, None)
-        .unwrap();
+    remote::push_with_rollback(
+        &f.work_path,
+        "r1",
+        "origin",
+        "main",
+        true,
+        &f.safety,
+        None,
+        None,
+    )
+    .unwrap();
     let pushed = git_out(&f.origin_path, &["log", "--format=%s", "-1", "main"]);
     assert!(pushed.contains("rewritten base"));
 

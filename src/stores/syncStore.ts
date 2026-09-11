@@ -42,6 +42,38 @@ export interface SyncProgressState {
   percent: number | null;
 }
 
+/**
+ * One-shot HTTPS credentials for pushing to legacy servers. Session memory
+ * only: kept in a module-level Map (never in zustand state, never
+ * persisted), cleared when the app exits. Passwords never reach logs —
+ * `record()` callers must not interpolate them.
+ */
+export interface PushCredentialsInput {
+  username: string;
+  password: string;
+}
+
+const credentialsCache = new Map<string, PushCredentialsInput>();
+
+/** Test seam: drops all cached session credentials. */
+export function clearCachedCredentials(): void {
+  credentialsCache.clear();
+}
+
+/** A pending credential prompt; resolved by the credentials dialog. */
+export interface CredentialsRequest {
+  /** Monotonic id so the dialog remounts (clearing inputs) per prompt. */
+  id: number;
+  remote: string;
+  resolve: (creds: PushCredentialsInput | null) => void;
+}
+
+let nextCredentialsRequestId = 1;
+
+export function credentialsKey(repoId: string, remote: string): string {
+  return `${repoId}\0${remote}`;
+}
+
 interface SyncStoreState {
   remotes: RemoteInfo[];
   /** `origin/main` style short names for the set-upstream dialog. */
@@ -51,6 +83,8 @@ interface SyncStoreState {
   progress: SyncProgressState | null;
   busy: string | null;
   error: HumanizedError | null;
+  /** Pending HTTPS credential prompt for the credentials dialog; null when idle. */
+  credentialsRequest: CredentialsRequest | null;
 
   /** Loads remotes, remote branches and the undo/redo state. */
   refresh: () => Promise<void>;
@@ -65,8 +99,14 @@ interface SyncStoreState {
     branch: string,
     strategy: SyncStrategy,
   ) => Promise<'ok' | 'diverged' | 'error'>;
-  /** Returns 'ok' | 'rejected' | 'error'; rejected opens the 强推 dialog. */
-  push: (remote: string, branch: string, force: boolean) => Promise<'ok' | 'rejected' | 'error'>;
+  /** Returns 'ok' | 'rejected' | 'auth' | 'cancelled' | 'error';
+   *  rejected opens the 强推 dialog, auth opens the credentials dialog,
+   *  cancelled means the user dismissed a dialog (quiet, no toast). */
+  push: (
+    remote: string,
+    branch: string,
+    force: boolean,
+  ) => Promise<'ok' | 'rejected' | 'auth' | 'cancelled' | 'error'>;
   testRemote: (name: string) => Promise<number | null>;
   addRemote: (name: string, url: string) => Promise<boolean>;
   renameRemote: (oldName: string, newName: string) => Promise<boolean>;
@@ -89,6 +129,7 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
   progress: null,
   busy: null,
   error: null,
+  credentialsRequest: null,
 
   refresh: async () => {
     if (!isTauriAvailable()) return; // seed/test seam
@@ -207,17 +248,49 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
     try {
       const flag = force ? '--force-with-lease ' : '';
       record(`git push ${flag}${q(remote)} ${q(branch)}`);
-      const status = await pushRemoteIpc(activeId, remote, branch, force);
-      await useRepoStore.getState().seed({ status });
-      toast.success(t('sync.pushed', { remote }));
-      await get().refresh();
-      return 'ok';
-    } catch (error) {
-      const raw = error as EgErrorLike;
-      if (raw.code === 'conflict_state') {
-        return 'rejected';
+      // First attempt is ambient (system credential helpers); the askpass
+      // fallback below only kicks in on an Auth rejection.
+      const attempt = async (creds: PushCredentialsInput | null) => {
+        const status = await pushRemoteIpc(activeId, remote, branch, force, creds);
+        await useRepoStore.getState().seed({ status });
+        toast.success(t('sync.pushed', { remote }));
+        await get().refresh();
+      };
+      try {
+        await attempt(credentialsCache.get(credentialsKey(activeId, remote)) ?? null);
+        return 'ok';
+      } catch (error) {
+        const raw = error as EgErrorLike;
+        if (raw.code === 'conflict_state') {
+          return 'rejected';
+        }
+        if (raw.code !== 'auth') {
+          throw error;
+        }
+        // Auth fallback for legacy HTTPS servers: the cached session
+        // credential (if any) already failed above, so prompt and retry once.
+        credentialsCache.delete(credentialsKey(activeId, remote));
+        const creds = await new Promise<PushCredentialsInput | null>((resolve) => {
+          const id = nextCredentialsRequestId;
+          nextCredentialsRequestId += 1;
+          set({ credentialsRequest: { id, remote, resolve } });
+        });
+        set({ credentialsRequest: null });
+        if (!creds) return 'cancelled';
+        try {
+          await attempt(creds);
+        } catch (retryError) {
+          if ((retryError as EgErrorLike).code === 'auth') {
+            toast.error(t('sync.authFailed'));
+            return 'auth';
+          }
+          throw retryError;
+        }
+        credentialsCache.set(credentialsKey(activeId, remote), creds);
+        return 'ok';
       }
-      const humanized = formatIpcError(raw);
+    } catch (error) {
+      const humanized = formatIpcError(error as EgErrorLike);
       toast.error(humanized.title, humanized.detail);
       return 'error';
     } finally {
@@ -364,6 +437,13 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
   },
 
   clear: () => {
-    set({ remotes: [], remoteBranches: [], timeline: [], undoRedo: null, progress: null });
+    set({
+      remotes: [],
+      remoteBranches: [],
+      timeline: [],
+      undoRedo: null,
+      progress: null,
+      credentialsRequest: null,
+    });
   },
 }));
