@@ -63,6 +63,7 @@ export function SyncButtons({ hasActiveRepo }: { hasActiveRepo: boolean }) {
         variant="tertiary"
         size="sm"
         disabled={!enabled || busy === 'fetch'}
+        loading={busy === 'fetch'}
         data-testid="sync-fetch"
         onClick={() => void fetchRemote(remote)}
       >
@@ -73,6 +74,7 @@ export function SyncButtons({ hasActiveRepo }: { hasActiveRepo: boolean }) {
         variant="tertiary"
         size="sm"
         disabled={!enabled || busy === 'pull'}
+        loading={busy === 'pull'}
         data-testid="sync-pull"
         onClick={() => void onPull()}
       >
@@ -83,6 +85,7 @@ export function SyncButtons({ hasActiveRepo }: { hasActiveRepo: boolean }) {
         variant="tertiary"
         size="sm"
         disabled={!enabled || busy === 'push'}
+        loading={busy === 'push'}
         data-testid="sync-push"
         onClick={() => void onPush()}
       >
@@ -102,6 +105,7 @@ export function SyncButtons({ hasActiveRepo }: { hasActiveRepo: boolean }) {
             </Button>
             <Button
               variant="primary"
+              loading={busy === 'pull'}
               data-testid="pull-merge-confirm"
               onClick={() => {
                 setDivergedOpen(false);
@@ -139,6 +143,7 @@ export function SyncButtons({ hasActiveRepo }: { hasActiveRepo: boolean }) {
             </Button>
             <Button
               variant="danger"
+              loading={busy === 'push'}
               data-testid="push-force-confirm"
               onClick={() => void onForcePush()}
             >

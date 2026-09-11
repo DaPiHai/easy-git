@@ -1,7 +1,7 @@
 import * as ContextMenu from '@radix-ui/react-context-menu';
 import { GitBranch, GitCommitHorizontal, GitGraph, Search, Tag } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Dialog, EmptyState } from '../../components';
+import { Button, Dialog, EmptyState, LoadingBar } from '../../components';
 import { t } from '../../lib/i18n';
 import { authorInitial, formatRelativeTime } from '../../lib/time';
 import type { CommitLogEntry } from '../../lib/ipc/commands';
@@ -55,8 +55,8 @@ export function HistoryPage() {
       ) : null}
       <CommitList />
       {loading ? (
-        <div className="h-0.5 overflow-hidden" role="progressbar" aria-label={t('history.title')}>
-          <div className="h-full w-1/3 animate-pulse rounded-full bg-primary" />
+        <div className="relative">
+          <LoadingBar label={t('history.title')} />
         </div>
       ) : null}
     </div>

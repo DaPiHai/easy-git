@@ -2,7 +2,7 @@ import * as ContextMenu from '@radix-ui/react-context-menu';
 import { CheckCircle2, ChevronRight, FileDiff, Search } from 'lucide-react';
 import { create } from 'zustand';
 import { useState } from 'react';
-import { Badge, Checkbox, Dialog, EmptyState } from '../../components';
+import { Badge, Checkbox, Dialog, EmptyState, LoadingBar } from '../../components';
 import { t, type MessageKey } from '../../lib/i18n';
 import { useRepoStore } from '../../stores/repoStore';
 import { toast } from '../../stores/toastStore';
@@ -55,7 +55,7 @@ export function ChangesPage() {
           title={t('changes.clean.title')}
           description={t('changes.clean.desc')}
         />
-        {statusLoading ? <LoadingBar /> : null}
+        {statusLoading ? <LoadingBar label={t('changes.title')} /> : null}
       </div>
     );
   }
@@ -70,7 +70,7 @@ export function ChangesPage() {
 
   return (
     <div className="relative h-full overflow-y-auto" data-testid="changes-view">
-      {statusLoading ? <LoadingBar /> : null}
+      {statusLoading ? <LoadingBar label={t('changes.title')} /> : null}
       <ConceptCards />
       {isClean(status) ? (
         <EmptyState
@@ -191,18 +191,6 @@ function FlowStrip({
           </span>
         </span>
       ))}
-    </div>
-  );
-}
-
-function LoadingBar() {
-  return (
-    <div
-      className="absolute inset-x-0 top-0 h-0.5 overflow-hidden"
-      role="progressbar"
-      aria-label={t('changes.title')}
-    >
-      <div className="h-full w-1/3 animate-pulse rounded-full bg-primary" />
     </div>
   );
 }

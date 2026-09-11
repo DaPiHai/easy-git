@@ -2,12 +2,16 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BottomBar } from './BottomBar';
+import { useBusyStore } from '../../stores/busyStore';
 import { useLensStore } from '../../stores/lensStore';
+import { useSyncStore } from '../../stores/syncStore';
 import { useUiStore } from '../../stores/uiStore';
 
 beforeEach(() => {
   useLensStore.setState({ entries: [] });
   useUiStore.setState({ expertMode: false });
+  useSyncStore.setState({ progress: null });
+  useBusyStore.getState().reset();
 });
 
 describe('BottomBar command lens (F-13)', () => {
@@ -48,5 +52,30 @@ describe('BottomBar command lens (F-13)', () => {
     expect(screen.getByTestId('mode-switch')).toHaveTextContent('简洁模式');
     await userEvent.click(screen.getByTestId('mode-switch'));
     expect(screen.getByTestId('mode-switch')).toHaveTextContent('专家模式');
+  });
+});
+
+describe('BottomBar wait indicator', () => {
+  it('shows the running operation name when there is no network progress', () => {
+    useBusyStore.setState({ visible: true, label: 'busy.branch.switch' });
+    render(<BottomBar />);
+    expect(screen.getByTestId('busy-strip')).toHaveTextContent('正在切换分支…');
+    expect(screen.queryByTestId('sync-task-strip')).not.toBeInTheDocument();
+  });
+
+  it('prefers the network progress strip while fetch/pull/push reports progress', () => {
+    useSyncStore.setState({
+      progress: { task: 'push', message: 'Writing objects: 42%', percent: 42 },
+    });
+    useBusyStore.setState({ visible: true, label: 'busy.push' });
+    render(<BottomBar />);
+    expect(screen.getByTestId('sync-task-strip')).toBeInTheDocument();
+    expect(screen.queryByTestId('busy-strip')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the idle hint when nothing is running', () => {
+    render(<BottomBar />);
+    expect(screen.getByText('暂无后台任务')).toBeInTheDocument();
+    expect(screen.queryByTestId('busy-strip')).not.toBeInTheDocument();
   });
 });

@@ -21,6 +21,9 @@ export function RemotesPage() {
     null,
   );
   const [deleting, setDeleting] = useState<string | null>(null);
+  // syncStore.busy only tracks fetch/pull/push, so 测试连接 keeps its own flag
+  // to spin the exact row's button.
+  const [testing, setTesting] = useState<string | null>(null);
 
   useEffect(() => {
     if (hasActiveRepo) void refresh();
@@ -77,8 +80,12 @@ export function RemotesPage() {
                   size="sm"
                   variant="tertiary"
                   data-testid={`remote-test-${remote.name}`}
-                  disabled={busy !== null}
-                  onClick={() => void testRemote(remote.name)}
+                  disabled={busy !== null || testing !== null}
+                  loading={testing === remote.name}
+                  onClick={() => {
+                    setTesting(remote.name);
+                    void testRemote(remote.name).finally(() => setTesting(null));
+                  }}
                 >
                   {t('remotes.test')}
                 </Button>
@@ -87,6 +94,7 @@ export function RemotesPage() {
                   variant="tertiary"
                   data-testid={`remote-fetch-${remote.name}`}
                   disabled={busy !== null}
+                  loading={busy === 'fetch'}
                   onClick={() => void fetchRemote(remote.name)}
                 >
                   <RefreshCw className="size-3" aria-hidden />
@@ -166,6 +174,7 @@ function RemoteFormDialog({
   const setRemoteUrl = useSyncStore((s) => s.setRemoteUrl);
   const [name, setName] = useState(form?.name ?? '');
   const [url, setUrl] = useState(form?.url ?? '');
+  const [submitting, setSubmitting] = useState(false);
 
   const valid =
     form !== null &&
@@ -175,15 +184,20 @@ function RemoteFormDialog({
 
   const submit = async () => {
     if (!form || !valid) return;
-    const ok =
-      form.mode === 'add'
-        ? await addRemote(name.trim(), url.trim())
-        : form.name === name.trim()
-          ? await setRemoteUrl(form.name, url.trim())
-          : await renameRemote(form.name, name.trim()).then(async (renamed) =>
-              renamed ? setRemoteUrl(name.trim(), url.trim()) : false,
-            );
-    if (ok) onClose();
+    setSubmitting(true);
+    try {
+      const ok =
+        form.mode === 'add'
+          ? await addRemote(name.trim(), url.trim())
+          : form.name === name.trim()
+            ? await setRemoteUrl(form.name, url.trim())
+            : await renameRemote(form.name, name.trim()).then(async (renamed) =>
+                renamed ? setRemoteUrl(name.trim(), url.trim()) : false,
+              );
+      if (ok) onClose();
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -198,7 +212,8 @@ function RemoteFormDialog({
           </Button>
           <Button
             variant="primary"
-            disabled={!valid}
+            disabled={!valid || submitting}
+            loading={submitting}
             data-testid="remote-form-confirm"
             onClick={() => void submit()}
           >

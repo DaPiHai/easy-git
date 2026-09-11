@@ -1,5 +1,6 @@
-import { Redo2, Undo2, ChevronDown } from 'lucide-react';
+import { ChevronDown, Loader2, Redo2, Undo2 } from 'lucide-react';
 import { t } from '../../lib/i18n';
+import { useBusyStore } from '../../stores/busyStore';
 import { useRepoStore } from '../../stores/repoStore';
 import { useSyncStore } from '../../stores/syncStore';
 import { useUiStore } from '../../stores/uiStore';
@@ -17,6 +18,10 @@ export function BottomBar() {
   const redo = useSyncStore((s) => s.redo);
   const undoOperation = useRepoStore((s) => s.undoOperation);
   const progress = useSyncStore((s) => s.progress);
+  // Local (non-network) operations have no progress stream; they show their
+  // operation name here instead (busyStore). Network progress wins when both.
+  const busy = useBusyStore((s) => s.visible);
+  const busyLabel = useBusyStore((s) => s.label);
   const activeId = useRepoStore((s) => s.activeId);
 
   const onUndo = () => {
@@ -68,7 +73,11 @@ export function BottomBar() {
 
       <LensPanel />
 
-      <div className="ml-auto flex items-center gap-eg-4" data-testid="status-area">
+      <div
+        className="ml-auto flex items-center gap-eg-4"
+        data-testid="status-area"
+        aria-live="polite"
+      >
         {progress ? (
           <span className="flex items-center gap-2" data-testid="sync-task-strip">
             <span className="max-w-[420px] truncate text-ink-muted">
@@ -82,6 +91,11 @@ export function BottomBar() {
                 />
               </span>
             ) : null}
+          </span>
+        ) : busy ? (
+          <span className="flex items-center gap-2" data-testid="busy-strip">
+            <Loader2 className="size-3 animate-spin text-ink-muted" aria-hidden />
+            <span className="truncate text-ink-muted">{t(busyLabel ?? 'busy.generic')}</span>
           </span>
         ) : (
           <span className="text-ink-tertiary">{t('bottom.task.none')}</span>

@@ -51,6 +51,7 @@ export function CloneDialog() {
           <Button
             variant="primary"
             disabled={!valid}
+            loading={busy}
             data-testid="clone-confirm"
             onClick={() => void submit()}
           >

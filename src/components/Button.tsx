@@ -1,4 +1,5 @@
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { Loader2 } from 'lucide-react';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'tertiary' | 'danger' | 'inverse';
 export type ButtonSize = 'sm' | 'md';
@@ -22,21 +23,37 @@ const sizeClasses: Record<ButtonSize, string> = {
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   size?: ButtonSize;
+  /**
+   * In-flight state (UI doc §6.1 加载态): shows a spinner, keeps the label (so
+   * the button width does not jump) and disables the button.
+   */
+  loading?: boolean;
   /** Render any inline element (icon or label). */
   children?: ReactNode;
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { variant = 'secondary', size = 'md', className = '', type = 'button', children, ...rest },
+  {
+    variant = 'secondary',
+    size = 'md',
+    className = '',
+    type = 'button',
+    loading = false,
+    disabled,
+    children,
+    ...rest
+  },
   ref,
 ) {
   return (
     <button
       ref={ref}
       type={type}
+      disabled={disabled || loading}
       className={`inline-flex select-none items-center justify-center gap-1.5 rounded-md font-ui text-secondary font-medium transition-colors duration-80 ease-eg disabled:pointer-events-none disabled:opacity-40 ${sizeClasses[size]} ${variantClasses[variant]} ${className}`}
       {...rest}
     >
+      {loading ? <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden /> : null}
       {children}
     </button>
   );

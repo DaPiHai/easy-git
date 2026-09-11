@@ -1,4 +1,4 @@
-import { AlertTriangle, GitCommitHorizontal, UserRoundX } from 'lucide-react';
+import { AlertTriangle, GitCommitHorizontal, Loader2, UserRoundX } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Checkbox } from '../../components';
 import { t } from '../../lib/i18n';
@@ -175,6 +175,7 @@ export function CommitBox() {
         onClick={() => submit(false)}
         className="mt-eg-3 flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md bg-primary px-3.5 text-secondary font-medium text-on-primary transition-opacity duration-80 ease-eg hover:opacity-90 disabled:pointer-events-none disabled:opacity-40"
       >
+        {submitting ? <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden /> : null}
         {submitting
           ? t('commit.submitting')
           : amend

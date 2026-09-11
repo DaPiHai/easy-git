@@ -27,4 +27,17 @@ describe('Button', () => {
     expect(onClick).not.toHaveBeenCalled();
     expect(screen.getByRole('button')).toBeDisabled();
   });
+
+  it('shows a spinner, keeps its label and blocks clicks while loading', async () => {
+    const onClick = vi.fn();
+    const { container } = render(
+      <Button onClick={onClick} loading>
+        推送
+      </Button>,
+    );
+    expect(container.querySelector('svg.animate-spin')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '推送' })).toBeDisabled();
+    await userEvent.click(screen.getByRole('button'));
+    expect(onClick).not.toHaveBeenCalled();
+  });
 });

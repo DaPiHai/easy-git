@@ -2,7 +2,8 @@ import { useEffect } from 'react';
 import { handleShortcut } from '../../lib/shortcuts';
 import { useUiStore } from '../../stores/uiStore';
 import { useRepoStore } from '../../stores/repoStore';
-import { ToastHost } from '../../components';
+import { useBusyStore } from '../../stores/busyStore';
+import { LoadingBar, ToastHost } from '../../components';
 import { BottomBar } from './BottomBar';
 import { DetailPanel } from './DetailPanel';
 import { RepoSidebar } from './RepoSidebar';
@@ -29,6 +30,9 @@ export function AppShell() {
   // F-24: a parked merge takes over the main view until resolved/aborted.
   const midMerge = useMergeStore((s) => s.mergeState !== null);
   const status = useRepoStore((s) => s.status);
+  // Global wait bar for user-initiated git operations (busyStore is time-gated,
+  // so instant operations never flash; read-only refreshes never raise it).
+  const busy = useBusyStore((s) => s.visible);
 
   useEffect(() => {
     const { initTheme, fetchAppVersion } = useUiStore.getState();
@@ -62,7 +66,8 @@ export function AppShell() {
   }, []);
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-canvas font-ui text-ink">
+    <div className="relative flex h-full flex-col overflow-hidden bg-canvas font-ui text-ink">
+      {busy ? <LoadingBar className="z-50" /> : null}
       <TopBar />
       <div className="flex min-h-0 flex-1">
         <RepoSidebar />

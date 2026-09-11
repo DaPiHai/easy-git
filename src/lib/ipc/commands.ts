@@ -41,6 +41,8 @@ import {
 } from './bindings';
 import type { EgErrorLike, HumanizedError } from './errors';
 import { humanizeEgError } from './errors';
+import type { MessageKey } from '../i18n';
+import { useBusyStore } from '../../stores/busyStore';
 
 export type {
   AppVersion,
@@ -95,6 +97,67 @@ export function isTauriAvailable(): boolean {
 }
 
 /**
+ * Wait-indicator labels, keyed by the frontend export name below. Wrapping is
+ * opt-in: only user-initiated write/network calls that can take seconds are
+ * listed. Read-only calls (status refresh, log/diff pages, polling) are
+ * deliberately absent so background work never lights the indicator up —
+ * that would reintroduce the flicker rc.2 removed (docs/easy-git-tdd.md W10 ③).
+ */
+const BUSY_LABELS: Partial<Record<string, MessageKey>> = {
+  openRepo: 'busy.repo.open',
+  initRepo: 'busy.repo.init',
+  closeRepo: 'busy.repo.close',
+  stagePaths: 'busy.stage',
+  stageLines: 'busy.stage.lines',
+  discardChanges: 'busy.discard',
+  cleanExecute: 'busy.clean',
+  ignorePaths: 'busy.ignore',
+  undoOperation: 'busy.undo',
+  redoOperation: 'busy.redo',
+  restoreTo: 'busy.restore',
+  commitIndex: 'busy.commit',
+  setConfig: 'busy.config',
+  branchCreate: 'busy.branch.create',
+  branchRename: 'busy.branch.rename',
+  branchDelete: 'busy.branch.delete',
+  branchSwitch: 'busy.branch.switch',
+  branchSetUpstream: 'busy.branch.upstream',
+  tagCreate: 'busy.tag.create',
+  tagDelete: 'busy.tag.delete',
+  stashPush: 'busy.stash.push',
+  stashApply: 'busy.stash.apply',
+  stashDrop: 'busy.stash.drop',
+  mergeStart: 'busy.merge',
+  mergeAbort: 'busy.merge.abort',
+  conflictResolve: 'busy.conflict.resolve',
+  revertCommits: 'busy.revert',
+  resetCommits: 'busy.reset',
+  fetchRemote: 'busy.fetch',
+  pullRemote: 'busy.pull',
+  pushRemote: 'busy.push',
+  remoteTest: 'busy.remote.test',
+  cloneRepo: 'busy.clone',
+  remoteAdd: 'busy.remote.add',
+  remoteRename: 'busy.remote.rename',
+  remoteRemove: 'busy.remote.remove',
+  remoteSetUrl: 'busy.remote.url',
+};
+
+/**
+ * Runs one command under the global wait indicator (busyStore owns the
+ * reference counting and the show/hide timing, so instant commands never
+ * flash and overlapping ones cannot clear each other early).
+ */
+async function tracked<T>(name: string, run: () => Promise<T>): Promise<T> {
+  const end = useBusyStore.getState().begin(BUSY_LABELS[name] ?? 'busy.generic');
+  try {
+    return await run();
+  } finally {
+    end();
+  }
+}
+
+/**
  * Fetches app/tauri/os versions. Returns null when IPC is unavailable so the
  * shell can degrade gracefully (browser preview).
  */
@@ -105,19 +168,19 @@ export async function getAppVersion(): Promise<AppVersion | null> {
 }
 
 export async function openRepo(path: string): Promise<RepoSummary> {
-  const result = await commands.repoOpen(path);
+  const result = await tracked('openRepo', () => commands.repoOpen(path));
   if (result.status === 'error') throw result.error;
   return result.data;
 }
 
 export async function initRepo(path: string): Promise<RepoSummary> {
-  const result = await commands.repoInit(path);
+  const result = await tracked('initRepo', () => commands.repoInit(path));
   if (result.status === 'error') throw result.error;
   return result.data;
 }
 
 export async function closeRepo(repoId: string): Promise<void> {
-  const result = await commands.repoClose(repoId);
+  const result = await tracked('closeRepo', () => commands.repoClose(repoId));
   if (result.status === 'error') throw result.error;
 }
 
@@ -132,13 +195,13 @@ export async function stagePaths(
   paths: string[],
   mode: StageMode,
 ): Promise<StatusReport> {
-  const result = await commands.stage(repoId, paths, mode);
+  const result = await tracked('stagePaths', () => commands.stage(repoId, paths, mode));
   if (result.status === 'error') throw result.error;
   return result.data;
 }
 
 export async function discardChanges(repoId: string, paths: string[]): Promise<DiscardOutcome> {
-  const result = await commands.discardChanges(repoId, paths);
+  const result = await tracked('discardChanges', () => commands.discardChanges(repoId, paths));
   if (result.status === 'error') throw result.error;
   return result.data;
 }
@@ -150,7 +213,7 @@ export async function cleanPreview(repoId: string): Promise<string[]> {
 }
 
 export async function cleanExecute(repoId: string, paths: string[]): Promise<DiscardOutcome> {
-  const result = await commands.cleanExecute(repoId, paths);
+  const result = await tracked('cleanExecute', () => commands.cleanExecute(repoId, paths));
   if (result.status === 'error') throw result.error;
   return result.data;
 }
@@ -160,20 +223,20 @@ export async function ignorePaths(
   paths: string[],
   mode: IgnoreMode,
 ): Promise<StatusReport> {
-  const result = await commands.ignorePaths(repoId, paths, mode);
+  const result = await tracked('ignorePaths', () => commands.ignorePaths(repoId, paths, mode));
   if (result.status === 'error') throw result.error;
   return result.data;
 }
 
 export async function undoOperation(repoId: string, opId: string): Promise<StatusReport> {
-  const result = await commands.undoOperation(repoId, opId);
+  const result = await tracked('undoOperation', () => commands.undoOperation(repoId, opId));
   if (result.status === 'error') throw result.error;
   return result.data;
 }
 
 /** Commits the index (or amends); throws EgError on guard failures (R-07). */
 export async function commitIndex(repoId: string, request: CommitRequest): Promise<CommitOutcome> {
-  const result = await commands.commit(repoId, request);
+  const result = await tracked('commitIndex', () => commands.commit(repoId, request));
   if (result.status === 'error') throw result.error;
   return result.data;
 }
@@ -196,7 +259,7 @@ export async function setConfig(
   key: string,
   value: string,
 ): Promise<void> {
-  const result = await commands.configSet(repoId, scope, key, value);
+  const result = await tracked('setConfig', () => commands.configSet(repoId, scope, key, value));
   if (result.status === 'error') throw result.error;
 }
 
@@ -238,7 +301,7 @@ export async function stageLines(
   repoId: string,
   request: StageLinesRequest,
 ): Promise<StatusReport> {
-  const result = await commands.stageLines(repoId, request);
+  const result = await tracked('stageLines', () => commands.stageLines(repoId, request));
   if (result.status === 'error') throw result.error;
   return result.data;
 }
@@ -255,7 +318,7 @@ export async function branchCreate(
   name: string,
   oid: string | null,
 ): Promise<BranchInfo> {
-  const result = await commands.branchCreate(repoId, name, oid);
+  const result = await tracked('branchCreate', () => commands.branchCreate(repoId, name, oid));
   if (result.status === 'error') throw result.error;
   return result.data;
 }
@@ -265,19 +328,21 @@ export async function branchRename(
   oldName: string,
   newName: string,
 ): Promise<void> {
-  const result = await commands.branchRename(repoId, oldName, newName);
+  const result = await tracked('branchRename', () =>
+    commands.branchRename(repoId, oldName, newName),
+  );
   if (result.status === 'error') throw result.error;
 }
 
 /** Returns the op id for the 撤销 toast (m1-plan R-16). */
 export async function branchDelete(repoId: string, name: string): Promise<string> {
-  const result = await commands.branchDelete(repoId, name);
+  const result = await tracked('branchDelete', () => commands.branchDelete(repoId, name));
   if (result.status === 'error') throw result.error;
   return result.data;
 }
 
 export async function branchSwitch(repoId: string, name: string): Promise<StatusReport> {
-  const result = await commands.branchSwitch(repoId, name);
+  const result = await tracked('branchSwitch', () => commands.branchSwitch(repoId, name));
   if (result.status === 'error') throw result.error;
   return result.data;
 }
@@ -295,13 +360,13 @@ export async function tagCreate(
   oid: string,
   message: string | null,
 ): Promise<TagInfo> {
-  const result = await commands.tagCreate(repoId, name, oid, message);
+  const result = await tracked('tagCreate', () => commands.tagCreate(repoId, name, oid, message));
   if (result.status === 'error') throw result.error;
   return result.data;
 }
 
 export async function tagDelete(repoId: string, name: string): Promise<string> {
-  const result = await commands.tagDelete(repoId, name);
+  const result = await tracked('tagDelete', () => commands.tagDelete(repoId, name));
   if (result.status === 'error') throw result.error;
   return result.data;
 }
@@ -318,7 +383,9 @@ export async function stashPush(
   message: string | null,
   includeUntracked: boolean,
 ): Promise<StatusReport> {
-  const result = await commands.stashPush(repoId, message, includeUntracked);
+  const result = await tracked('stashPush', () =>
+    commands.stashPush(repoId, message, includeUntracked),
+  );
   if (result.status === 'error') throw result.error;
   return result.data;
 }
@@ -328,13 +395,13 @@ export async function stashApply(
   index: number,
   pop: boolean,
 ): Promise<StatusReport> {
-  const result = await commands.stashApply(repoId, index, pop);
+  const result = await tracked('stashApply', () => commands.stashApply(repoId, index, pop));
   if (result.status === 'error') throw result.error;
   return result.data;
 }
 
 export async function stashDrop(repoId: string, index: number): Promise<StashEntry[]> {
-  const result = await commands.stashDrop(repoId, index);
+  const result = await tracked('stashDrop', () => commands.stashDrop(repoId, index));
   if (result.status === 'error') throw result.error;
   return result.data;
 }
@@ -345,7 +412,7 @@ export async function mergeStart(
   name: string,
   noFf: boolean,
 ): Promise<MergeOutcome> {
-  const r = await commands.mergeStart(repoId, name, noFf);
+  const r = await tracked('mergeStart', () => commands.mergeStart(repoId, name, noFf));
   if (r.status === 'error') throw r.error;
   return r.data;
 }
@@ -357,7 +424,7 @@ export async function mergeStateGet(repoId: string): Promise<MergeState | null> 
 }
 
 export async function mergeAbort(repoId: string): Promise<StatusReport> {
-  const r = await commands.mergeAbort(repoId);
+  const r = await tracked('mergeAbort', () => commands.mergeAbort(repoId));
   if (r.status === 'error') throw r.error;
   return r.data;
 }
@@ -373,13 +440,13 @@ export async function conflictResolve(
   path: string,
   content: string,
 ): Promise<StatusReport> {
-  const r = await commands.conflictResolve(repoId, path, content);
+  const r = await tracked('conflictResolve', () => commands.conflictResolve(repoId, path, content));
   if (r.status === 'error') throw r.error;
   return r.data;
 }
 
 export async function revertCommits(repoId: string, oids: string[]): Promise<StatusReport> {
-  const r = await commands.revertCommits(repoId, oids);
+  const r = await tracked('revertCommits', () => commands.revertCommits(repoId, oids));
   if (r.status === 'error') throw r.error;
   return r.data;
 }
@@ -389,7 +456,7 @@ export async function resetCommits(
   mode: ResetMode,
   target: string | null,
 ): Promise<ResetOutcome> {
-  const r = await commands.resetCommits(repoId, mode, target);
+  const r = await tracked('resetCommits', () => commands.resetCommits(repoId, mode, target));
   if (r.status === 'error') throw r.error;
   return r.data;
 }
@@ -399,7 +466,7 @@ export async function fetchRemote(
   remote: string,
   prune: boolean,
 ): Promise<StatusReport> {
-  const r = await commands.syncFetch(repoId, remote, prune);
+  const r = await tracked('fetchRemote', () => commands.syncFetch(repoId, remote, prune));
   if (r.status === 'error') throw r.error;
   return r.data;
 }
@@ -410,7 +477,7 @@ export async function pullRemote(
   branch: string,
   strategy: SyncStrategy,
 ): Promise<MergeOutcome> {
-  const r = await commands.syncPull(repoId, remote, branch, strategy);
+  const r = await tracked('pullRemote', () => commands.syncPull(repoId, remote, branch, strategy));
   if (r.status === 'error') throw r.error;
   return r.data;
 }
@@ -424,19 +491,21 @@ export async function pushRemote(
   force: boolean,
   credentials?: PushCredentials | null,
 ): Promise<StatusReport> {
-  const r = await commands.syncPush(repoId, remote, branch, force, credentials ?? null);
+  const r = await tracked('pushRemote', () =>
+    commands.syncPush(repoId, remote, branch, force, credentials ?? null),
+  );
   if (r.status === 'error') throw r.error;
   return r.data;
 }
 
 export async function remoteTest(repoId: string, remote: string): Promise<number> {
-  const r = await commands.remoteTest(repoId, remote);
+  const r = await tracked('remoteTest', () => commands.remoteTest(repoId, remote));
   if (r.status === 'error') throw r.error;
   return r.data;
 }
 
 export async function cloneRepo(url: string, path: string): Promise<RepoSummary> {
-  const r = await commands.repoClone(url, path);
+  const r = await tracked('cloneRepo', () => commands.repoClone(url, path));
   if (r.status === 'error') throw r.error;
   return r.data;
 }
@@ -448,7 +517,7 @@ export async function remoteList(repoId: string): Promise<RemoteInfo[]> {
 }
 
 export async function remoteAdd(repoId: string, name: string, url: string): Promise<void> {
-  const r = await commands.remoteAdd(repoId, name, url);
+  const r = await tracked('remoteAdd', () => commands.remoteAdd(repoId, name, url));
   if (r.status === 'error') throw r.error;
 }
 
@@ -457,22 +526,22 @@ export async function remoteRename(
   oldName: string,
   newName: string,
 ): Promise<void> {
-  const r = await commands.remoteRename(repoId, oldName, newName);
+  const r = await tracked('remoteRename', () => commands.remoteRename(repoId, oldName, newName));
   if (r.status === 'error') throw r.error;
 }
 
 export async function remoteRemove(repoId: string, name: string): Promise<void> {
-  const r = await commands.remoteRemove(repoId, name);
+  const r = await tracked('remoteRemove', () => commands.remoteRemove(repoId, name));
   if (r.status === 'error') throw r.error;
 }
 
 export async function remoteSetUrl(repoId: string, name: string, url: string): Promise<void> {
-  const r = await commands.remoteSetUrl(repoId, name, url);
+  const r = await tracked('remoteSetUrl', () => commands.remoteSetUrl(repoId, name, url));
   if (r.status === 'error') throw r.error;
 }
 
 export async function redoOperation(repoId: string): Promise<DiscardOutcome> {
-  const r = await commands.redoOperation(repoId);
+  const r = await tracked('redoOperation', () => commands.redoOperation(repoId));
   if (r.status === 'error') throw r.error;
   return r.data;
 }
@@ -484,7 +553,7 @@ export async function timelineGet(repoId: string, limit: number): Promise<Timeli
 }
 
 export async function restoreTo(repoId: string, oid: string): Promise<ResetOutcome> {
-  const r = await commands.timelineRestore(repoId, oid);
+  const r = await tracked('restoreTo', () => commands.timelineRestore(repoId, oid));
   if (r.status === 'error') throw r.error;
   return r.data;
 }
@@ -494,7 +563,9 @@ export async function branchSetUpstream(
   branch: string,
   upstream: string | null,
 ): Promise<BranchInfo> {
-  const r = await commands.branchSetUpstream(repoId, branch, upstream);
+  const r = await tracked('branchSetUpstream', () =>
+    commands.branchSetUpstream(repoId, branch, upstream),
+  );
   if (r.status === 'error') throw r.error;
   return r.data;
 }
