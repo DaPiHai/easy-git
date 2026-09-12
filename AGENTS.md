@@ -11,7 +11,7 @@ EasyGit：轻量、跨平台、中文优先的 Git 可视化**桌面应用**，�
 ```
 README.md / CONTRIBUTING.md / LICENSE   # 项目门面；CONTRIBUTING 含分支命名与 PR 门槛
 src/                 # React 前端：features/*/ stores/* lib/ipc/ components/ theme/ main.tsx test-setup.ts
-src-tauri/           # Rust：src/{main.rs,lib.rs,commands.rs(约57命令),events.rs,bin/generate-bindings.rs} crates/{eg-types,eg-git-core,eg-safety,eg-providers,eg-indexer}/ capabilities/default.json tauri.conf.json
+src-tauri/           # Rust：src/{main.rs,lib.rs,commands.rs(约55命令),events.rs,bin/generate-bindings.rs} crates/{eg-types,eg-git-core,eg-safety,eg-providers,eg-indexer}/ capabilities/default.json tauri.conf.json
 scripts/             # bench-perf.py snapshot-ui.py fixtures/
 .github/workflows/ci.yml  # lint / test / 三矩阵 build
 docs/
@@ -21,7 +21,8 @@ docs/
 ├─ easy-git-ui-design.md # UI 设计：--eg-* 令牌、明暗双主题、组件规格、界面布局图
 ├─ easy-git-m1-plan.md   # MVP 十周计划：任务编号 F-xx/R-xx/C-xx、每周验收、裁剪顺序
 ├─ git-commands.md       # Git 2.53 全部 172 命令清单（功能覆盖映射依据）
-├─ perf-baseline.md      # 性能基线；testing-10min.md 新手测试脚本
+├─ perf-baseline.md      # 性能基线
+├─ testing-10min.md      # 新手 10 分钟测试脚本
 └─ design/DESIGN.md      # Linear 设计规范（上游参考，来自 awesome-design-md，MIT）
 ```
 
@@ -71,6 +72,8 @@ cargo run --features gen-bindings --bin generate-bindings  # 生成绑定；跑�
 ## 已知注意事项
 
 - 提交前确认分支与 diff，不要擅自提交或推送（本项目自身就是 Git GUI，脏树风险高）。
+- 代码任务完成后必须出 Windows 安装包（MSI+NSIS）供测试机真机验证，只跑测试不算交付：`pnpm tauri build`。MSI（WiX）只收纯数字版本，须用 `--config '{"bundle":{"windows":{"wix":{"version":"0.1.0.N"}}}}'` 覆盖预发布串且每次递增 N（同号会被已装旧版拒绝覆盖安装）；NSIS 无此限制。
+- 合并/切分支后出现「反向 diff / 凭空多出的未暂存文件」，多半是外部编辑器（如 VS Code 旧缓冲）把文件写回旧内容，restore 到 HEAD 即可，不是 EasyGit 的 bug。
 - 改绑定/命令后必跑绑定漂移检查；`src/lib/ipc/bindings.ts` 漂移是 CI lint 直接失败项。
 - 外部命令（`git`）必须经 `eg_git_core::process::hidden_command` 创建：release 是 GUI 子系统无控制台，裸 `Command::new` 会让 Windows 每次给子进程弹一个空白 cmd 窗口；该问题只在 release 包复现，`tauri dev` 看不到。
 - M1 范围红线（不可裁剪）：三区暂存、提交、DAG 历史、分支、merge/冲突向导、fetch/push、撤销/回收站（m1-plan §4）。
