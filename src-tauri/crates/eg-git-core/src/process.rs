@@ -26,8 +26,38 @@ pub fn hidden_command(program: &str) -> std::process::Command {
     command
 }
 
+/// Maps a spawn failure onto the error taxonomy: a missing executable means
+/// git is not installed (or not on this process's PATH), which deserves the
+/// dedicated `git_missing` guidance instead of a raw `internal` error.
+pub fn classify_spawn_error(program: &str, error: &std::io::Error) -> eg_types::EgError {
+    if error.kind() == std::io::ErrorKind::NotFound {
+        eg_types::EgError::GitMissing
+    } else {
+        eg_types::EgError::Internal {
+            context: format!("{program} spawn failed: {error}"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn not_found_maps_to_git_missing() {
+        let err = classify_spawn_error("git", &std::io::Error::from(std::io::ErrorKind::NotFound));
+        assert_eq!(err.code(), "git_missing");
+    }
+
+    #[test]
+    fn other_spawn_errors_stay_internal() {
+        let err = classify_spawn_error(
+            "git",
+            &std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied"),
+        );
+        assert_eq!(err.code(), "internal");
+    }
+
     /// Spawning a console program through the helper must still work (the flag
     /// only affects console allocation). Also covers the non-Windows
     /// passthrough path.

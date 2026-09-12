@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { handleShortcut } from '../../lib/shortcuts';
-import { useUiStore } from '../../stores/uiStore';
+import { gitBlockingReason, useUiStore } from '../../stores/uiStore';
 import { useRepoStore } from '../../stores/repoStore';
 import { useBusyStore } from '../../stores/busyStore';
 import { LoadingBar, ToastHost } from '../../components';
@@ -11,6 +11,7 @@ import { QuickSwitcher } from '../palette/QuickSwitcher';
 import { TopBar } from './TopBar';
 import { OpenRepoWizard } from '../repo/OpenRepoWizard';
 import { CloneDialog } from '../repo/CloneDialog';
+import { GitMissingNotice } from '../repo/GitMissingNotice';
 import { CredentialsDialog } from './CredentialsDialog';
 import { ConflictWizard } from '../conflicts/ConflictWizard';
 import { useMergeStore } from '../../stores/mergeStore';
@@ -33,11 +34,16 @@ export function AppShell() {
   // Global wait bar for user-initiated git operations (busyStore is time-gated,
   // so instant operations never flash; read-only refreshes never raise it).
   const busy = useBusyStore((s) => s.visible);
+  // PRD §7: gate the main view when system git is missing or below 2.30.
+  const envStatus = useUiStore((s) => s.envStatus);
+  const gitReason = gitBlockingReason(envStatus?.gitVersion);
 
   useEffect(() => {
-    const { initTheme, fetchAppVersion } = useUiStore.getState();
+    const { initTheme, fetchAppVersion, fetchEnvStatus } = useUiStore.getState();
     initTheme();
     void fetchAppVersion();
+    // PRD §7: probe system git once at startup; GitMissingNotice gates on it.
+    void fetchEnvStatus();
     useRepoStore.getState().init();
     return () => {
       useUiStore.getState().stopWatchingSystemTheme();
@@ -72,7 +78,9 @@ export function AppShell() {
       <div className="flex min-h-0 flex-1">
         <RepoSidebar />
         <main className="min-w-0 flex-1">
-          {view === 'settings' ? (
+          {gitReason ? (
+            <GitMissingNotice />
+          ) : view === 'settings' ? (
             <SettingsPage />
           ) : !hasActiveRepo ? (
             <OpenRepoWizard />

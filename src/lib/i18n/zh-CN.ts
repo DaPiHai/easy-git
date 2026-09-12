@@ -416,6 +416,17 @@ export const zhCN = {
   'busy.remote.remove': '正在删除远程…',
   'busy.remote.url': '正在修改远程地址…',
 
+  // Environment gate (PRD §7: 检测系统 git ≥ 2.30，缺失时引导安装).
+  'env.gitMissing.title': '未检测到 Git',
+  'env.gitMissing.desc':
+    'EasyGit 需要系统安装 Git（2.30 或更高版本）才能完成同步、暂存等操作。请安装 Git 后重启 EasyGit，再点击「重新检测」。',
+  'env.gitTooOld.title': 'Git 版本过旧',
+  'env.gitTooOld.desc':
+    '当前 Git 为 {version}，低于 EasyGit 支持的最低版本 2.30。请升级 Git 后重启 EasyGit，再点击「重新检测」。',
+  'env.download': '打开 Git 下载页',
+  'env.recheck': '重新检测',
+  'env.rechecking': '正在重新检测…',
+
   'theme.system': '跟随系统',
   'theme.light': '亮色',
   'theme.dark': '暗色',

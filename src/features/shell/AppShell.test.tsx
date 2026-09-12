@@ -16,6 +16,7 @@ const getStatusMock = vi.fn(async (_repoId: string) => ({
 
 vi.mock('../../lib/ipc/commands', () => ({
   getAppVersion: vi.fn(async () => ({ appVersion: '0.1.0', tauriVersion: '2.0.0', os: 'test' })),
+  getEnvStatus: vi.fn(async () => ({ gitVersion: 'git version 2.53.0' })),
   isTauriAvailable: () => true,
   formatIpcError: vi.fn(() => ({ title: 'err', detail: '' })),
   openRepo: vi.fn(),

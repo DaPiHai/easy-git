@@ -232,9 +232,9 @@ impl GitCli {
             child.env("GIT_ASKPASS", &path);
             guard.path = Some(path);
         }
-        let mut child = child.spawn().map_err(|e| EgError::Internal {
-            context: format!("git {} spawn failed: {e}", args.join(" ")),
-        })?;
+        let mut child = child
+            .spawn()
+            .map_err(|e| crate::process::classify_spawn_error("git", &e))?;
 
         // git writes progress to stderr; --progress forces it even when not
         // attached to a tty. Stream it to the task strip while collecting.

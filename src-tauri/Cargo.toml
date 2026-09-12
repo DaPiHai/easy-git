@@ -63,6 +63,7 @@ tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
 specta-typescript = "0.0.12"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tauri-plugin-opener = "2"
 
 [dev-dependencies]
 # `cargo test` never launches the GUI; tauri::test keeps the lib testable later.

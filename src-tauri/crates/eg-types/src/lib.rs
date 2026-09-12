@@ -11,10 +11,11 @@ mod dto;
 pub use dto::{
     AppVersion, BranchInfo, ChangeEntry, ChangeKind, CommitDetail, CommitFile, CommitLogEntry,
     CommitOutcome, CommitRefs, CommitRequest, ConfigScope, ConflictBlock, ConflictFile, DiffHunk,
-    DiffLine, DiffLineKind, DiffRequest, DiffResponse, DiffSourceKind, GraphLine, GraphNode,
-    IgnoreMode, LogFilter, LogPage, MergeOutcome, MergeState, PushCredentials, RemoteInfo, RepoId,
-    RepoSummary, ResetMode, ResetOutcome, SelectedHunk, StageLinesRequest, StageMode, StashEntry,
-    StatusReport, SyncStrategy, TagInfo, TimelineEntry, UndoRedoState, WordSpan,
+    DiffLine, DiffLineKind, DiffRequest, DiffResponse, DiffSourceKind, EnvStatus, GraphLine,
+    GraphNode, IgnoreMode, LogFilter, LogPage, MergeOutcome, MergeState, PushCredentials,
+    RemoteInfo, RepoId, RepoSummary, ResetMode, ResetOutcome, SelectedHunk, StageLinesRequest,
+    StageMode, StashEntry, StatusReport, SyncStrategy, TagInfo, TimelineEntry, UndoRedoState,
+    WordSpan,
 };
 
 #[cfg(test)]
@@ -45,5 +46,20 @@ mod tests {
 
         let json = serde_json::to_string(&EgError::Cancelled).unwrap();
         assert_eq!(json, r#"{"code":"cancelled"}"#);
+
+        let json = serde_json::to_string(&EgError::GitMissing).unwrap();
+        assert_eq!(json, r#"{"code":"git_missing"}"#);
+    }
+
+    #[test]
+    fn env_status_serializes_camel_case() {
+        let json = serde_json::to_string(&EnvStatus {
+            git_version: Some("git version 2.53.0".into()),
+        })
+        .unwrap();
+        assert_eq!(json, r#"{"gitVersion":"git version 2.53.0"}"#);
+
+        let json = serde_json::to_string(&EnvStatus { git_version: None }).unwrap();
+        assert_eq!(json, r#"{"gitVersion":null}"#);
     }
 }

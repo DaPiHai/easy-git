@@ -22,6 +22,7 @@ pub fn run() {
     let builder = Builder::<tauri::Wry>::new()
         .commands(collect_commands![
             commands::app_version,
+            commands::env_check,
             commands::repo_open,
             commands::repo_init,
             commands::repo_close,
@@ -93,6 +94,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(RepoManager::default())
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {
