@@ -256,15 +256,17 @@ pub fn switch_branch(
         return Err(EgError::DirtyWorktree { paths: dirty });
     }
 
-    repo.set_head(&format!("refs/heads/{name}"))
-        .map_err(branch_err("set head"))?;
-    // Safe checkout: only reachable with a clean worktree, but a conflict
-    // (e.g. an untracked file racing in) still surfaces as dirty_worktree.
-    // recreate_missing lets files added on the target branch appear.
+    // Checkout the target tree BEFORE moving HEAD (same order as the merge
+    // ff path): checkout_head after set_head makes baseline == target, and
+    // the SAFE strategy then skips every differing file, leaving the workdir
+    // and index on the old branch behind a new-branch HEAD. The dirty guard
+    // above guarantees a clean worktree, so this checkout cannot refuse.
     let mut builder = CheckoutBuilder::new();
     builder.recreate_missing(true);
-    repo.checkout_head(Some(&mut builder))
+    repo.checkout_tree(target_commit.as_object(), Some(&mut builder))
         .map_err(|_| EgError::DirtyWorktree { paths: Vec::new() })?;
+    repo.set_head(&format!("refs/heads/{name}"))
+        .map_err(branch_err("set head"))?;
     status::status(repo_id, repo)
 }
 

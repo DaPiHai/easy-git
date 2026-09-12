@@ -275,3 +275,105 @@ fn stash_push_includes_untracked_files() {
     // Pop with apply: entry gone.
     assert!(stash::list_stashes(&mut mutable_repo).unwrap().is_empty());
 }
+
+fn read_file_norm(repo: &Repository, path: &str) -> String {
+    std::fs::read_to_string(repo.workdir().unwrap().join(path))
+        .unwrap()
+        .replace("\r\n", "\n")
+}
+
+/// Regression (fix/switch-worktree-sync): switching branches must sync the
+/// workdir and the on-disk index to the target tree. The old order (set_head
+/// moved HEAD, then checkout_head made baseline == target, so the SAFE
+/// strategy skipped every differing file) left the old branch's content on
+/// disk behind a new-branch HEAD — status showed unstaged/staged diffs.
+#[test]
+fn switch_branch_syncs_workdir_to_target() {
+    let (_dir, repo) = init_repo();
+    let base = commit_all(
+        &repo,
+        &[],
+        "base",
+        &[
+            ("a.txt", "base-a\n"),
+            ("b.txt", "base-b\n"),
+            ("c.txt", "delete-me\n"),
+        ],
+    );
+    // Whatever the default branch is called on this machine (master/main).
+    let home_branch = head_branch(&repo);
+    refs::create_branch(&repo, "other", Some(&base.to_string())).unwrap();
+
+    // The home branch diverges: b.txt modified.
+    let main_tip = commit_all(&repo, &[&base], "main work", &[("b.txt", "main-b\n")]);
+
+    // other diverges: a.txt modified, d.txt added, c.txt deleted (manual
+    // commit because commit_all only writes files).
+    repo.set_head("refs/heads/other").unwrap();
+    repo.checkout_head(Some(&mut git2::build::CheckoutBuilder::new().force()))
+        .unwrap();
+    let feature_tip = commit_all(
+        &repo,
+        &[&base],
+        "other work",
+        &[("a.txt", "other-a\n"), ("d.txt", "d\n")],
+    );
+    std::fs::remove_file(repo.workdir().unwrap().join("c.txt")).unwrap();
+    {
+        let mut index = repo.index().unwrap();
+        index.remove_all(["c.txt"], None).unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let sig = Signature::new("张三", "z@ex.com", &Time::new(2, 0)).unwrap();
+        let parent = repo.find_commit(feature_tip).unwrap();
+        repo.commit(
+            Some("HEAD"),
+            &sig,
+            &sig,
+            "other deletes c.txt",
+            &tree,
+            &[&parent],
+        )
+        .unwrap();
+    }
+    // Back on the home branch for the test.
+    repo.set_head(&format!("refs/heads/{home_branch}")).unwrap();
+    repo.checkout_head(Some(&mut git2::build::CheckoutBuilder::new().force()))
+        .unwrap();
+    assert_eq!(
+        main_tip,
+        repo.head().unwrap().peel_to_commit().unwrap().id()
+    );
+
+    // home → other: workdir and index follow the target tree, status clean.
+    let outcome = refs::switch_branch(&repo, "r1", "other").unwrap();
+    assert_eq!(head_branch(&repo), "other");
+    assert_eq!(read_file_norm(&repo, "a.txt"), "other-a\n");
+    assert_eq!(read_file_norm(&repo, "b.txt"), "base-b\n");
+    assert_eq!(read_file_norm(&repo, "d.txt"), "d\n");
+    assert!(
+        !repo.workdir().unwrap().join("c.txt").exists(),
+        "deleted on other, so the switch removes it"
+    );
+    assert!(outcome.staged.is_empty(), "staged: {:?}", outcome.staged);
+    assert!(
+        outcome.unstaged.is_empty(),
+        "unstaged: {:?}",
+        outcome.unstaged
+    );
+    assert!(outcome.conflicted.is_empty());
+
+    // other → home: everything restored, still clean.
+    let outcome = refs::switch_branch(&repo, "r1", &home_branch).unwrap();
+    assert_eq!(read_file_norm(&repo, "b.txt"), "main-b\n");
+    assert_eq!(read_file_norm(&repo, "a.txt"), "base-a\n");
+    assert_eq!(read_file_norm(&repo, "c.txt"), "delete-me\n");
+    assert!(
+        !repo.workdir().unwrap().join("d.txt").exists(),
+        "d.txt only exists on other"
+    );
+    assert!(outcome.staged.is_empty());
+    assert!(outcome.unstaged.is_empty());
+    assert!(outcome.conflicted.is_empty());
+}
