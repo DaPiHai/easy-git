@@ -6,6 +6,7 @@ import { useRepoStore } from '../../stores/repoStore';
 import { useUiStore } from '../../stores/uiStore';
 import { toast } from '../../stores/toastStore';
 import { ThemeToggle } from '../shell/ThemeToggle';
+import { LogsPanel } from './LogsPanel';
 
 /**
  * Settings page v1 (m1-plan F-14, P1): Git identity (global config), theme
@@ -19,6 +20,7 @@ export function SettingsPage() {
         <IdentitySection />
         <AppearanceSection />
         <ShortcutsSection />
+        <LogsPanel />
       </div>
     </div>
   );

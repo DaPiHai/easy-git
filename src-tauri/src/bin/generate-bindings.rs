@@ -65,6 +65,10 @@ fn main() {
             easy_git::commands::branch_set_upstream,
             easy_git::commands::undo_redo_state,
             easy_git::commands::remote_branch_list,
+            easy_git::commands::logs_dir,
+            easy_git::commands::logs_list,
+            easy_git::commands::logs_read,
+            easy_git::commands::log_write,
         ])
         .events(collect_events![
             easy_git::events::RepoChanged,

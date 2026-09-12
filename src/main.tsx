@@ -10,7 +10,11 @@ import { useUiStore } from './stores/uiStore';
 import { useToastStore } from './stores/toastStore';
 import { useMergeStore } from './stores/mergeStore';
 import { useSyncStore } from './stores/syncStore';
+import { installGlobalErrorLogging } from './lib/logger';
 import './theme/theme.css';
+
+// Uncaught frontend errors share the Rust file sink (TDD §1).
+installGlobalErrorLogging();
 
 // Dev-only handle for the snapshot/E2E harness (scripts/snapshot-ui.py).
 if (import.meta.env.DEV) {

@@ -20,7 +20,7 @@ pub const LOG_FILE_PREFIX: &str = "easygit.log";
 /// Daily files older than this are deleted at startup (best-effort).
 pub const RETENTION_DAYS: u64 = 14;
 /// Upper bound for one viewer read; a busy day can produce megabytes.
-pub const MAX_READ_BYTES: u64 = 512 * 1024;
+pub const MAX_READ_BYTES: u32 = 512 * 1024;
 /// Upper bound for one frontend log line (stack traces included).
 const MAX_WEB_MESSAGE_CHARS: usize = 4000;
 
@@ -29,12 +29,14 @@ pub fn logs_dir(app_data: &Path) -> PathBuf {
 }
 
 /// One rolling log file for the in-app viewer, newest first from [`list_log_files`].
+/// Counts stay in u32: specta forbids BigInt-style wire types, and a rolling
+/// daily log never approaches 4 GiB.
 #[derive(Debug, Clone, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct LogFileInfo {
     pub file_name: String,
-    pub size_bytes: u64,
-    pub modified_at: u64,
+    pub size_bytes: u32,
+    pub modified_at: u32,
 }
 
 /// Tail content of one log file. `truncated` marks that the head was cut so
@@ -84,10 +86,10 @@ pub fn list_log_files(dir: &Path) -> Vec<LogFileInfo> {
             .ok()
             .and_then(|m| m.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|d| d.as_secs())
-            .unwrap_or(0);
+            .unwrap_or(0) as u32;
         out.push(LogFileInfo {
             file_name: name,
-            size_bytes: meta.len(),
+            size_bytes: meta.len().min(u32::MAX as u64) as u32,
             modified_at,
         });
     }
@@ -98,7 +100,8 @@ pub fn list_log_files(dir: &Path) -> Vec<LogFileInfo> {
 /// Reads the tail of one log file (most of the time that's all a reader
 /// needs). The file name is validated against the rolling sink's exact shape
 /// so this can never read outside the logs directory.
-pub fn read_log_tail(dir: &Path, file_name: &str, max_bytes: u64) -> Result<LogContent, String> {
+pub fn read_log_tail(dir: &Path, file_name: &str, max_bytes: u32) -> Result<LogContent, String> {
+    let max_bytes = max_bytes as u64;
     if date_suffix(file_name).is_none() {
         return Err(format!("not a log file: {file_name:?}"));
     }

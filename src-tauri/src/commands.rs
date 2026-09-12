@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use eg_git_core::worker::{ChangeSink, DiscardOutcome};
@@ -850,4 +850,61 @@ where
         .map_err(|e| EgError::Internal {
             context: format!("worker task join failed: {e}"),
         })?
+}
+
+// ---------------------------------------------------------------------------
+// Log file access (in-app viewer, frontend exception entry) — TDD §1 file sink.
+// ---------------------------------------------------------------------------
+
+fn app_logs_dir(app: &AppHandle) -> Result<PathBuf, EgError> {
+    use tauri::Manager;
+    let app_data = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| EgError::Internal {
+            context: format!("app data dir unavailable: {e}"),
+        })?;
+    Ok(crate::logs::logs_dir(&app_data))
+}
+
+/// Absolute path of the rolling log directory (viewer header + 打开文件夹).
+#[tauri::command]
+#[specta::specta]
+pub fn logs_dir(app: AppHandle) -> Result<String, EgError> {
+    Ok(app_logs_dir(&app)?.to_string_lossy().into_owned())
+}
+
+/// Rolling log files, newest first (viewer file picker).
+#[tauri::command]
+#[specta::specta]
+pub fn logs_list(app: AppHandle) -> Result<Vec<crate::logs::LogFileInfo>, EgError> {
+    Ok(crate::logs::list_log_files(&app_logs_dir(&app)?))
+}
+
+/// Tail of one log file (viewer content pane).
+#[tauri::command]
+#[specta::specta]
+pub fn logs_read(
+    app: AppHandle,
+    file_name: String,
+    max_bytes: Option<u32>,
+) -> Result<crate::logs::LogContent, EgError> {
+    let dir = app_logs_dir(&app)?;
+    crate::logs::read_log_tail(
+        &dir,
+        &file_name,
+        max_bytes.unwrap_or(crate::logs::MAX_READ_BYTES),
+    )
+    .map_err(|e| EgError::Internal {
+        context: format!("log read failed: {e}"),
+    })
+}
+
+/// Frontend-originated log line (window errors, manual appLog calls). Routed
+/// through tracing so web lines share the file sink; best-effort by design.
+#[tauri::command]
+#[specta::specta]
+pub fn log_write(level: String, scope: String, message: String) -> Result<(), EgError> {
+    crate::logs::write_web_log(&level, &scope, &message);
+    Ok(())
 }

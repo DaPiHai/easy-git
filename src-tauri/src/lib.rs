@@ -84,6 +84,10 @@ pub fn run() {
             commands::branch_set_upstream,
             commands::undo_redo_state,
             commands::remote_branch_list,
+            commands::logs_dir,
+            commands::logs_list,
+            commands::logs_read,
+            commands::log_write,
         ])
         .events(collect_events![
             events::RepoChanged,

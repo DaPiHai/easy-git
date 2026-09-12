@@ -8,131 +8,131 @@ import * as __TAURI_EVENT from "@tauri-apps/api/event";
 /** Commands */
 export const commands = {
 	/**  Sample command proving the tauri-specta pipeline end to end (F-01). */
-	appVersion: () => typedError<AppVersion, EgError>(__TAURI_INVOKE("app_version")),
+	appVersion: () => typedError<AppVersion, EgError_Serialize>(__TAURI_INVOKE("app_version")),
 	/**
 	 *  Startup environment probe (PRD §7: 检测系统 git ≥ 2.30，缺失时引导安装).
 	 *  `git_version` is None when no usable git answers on PATH; the frontend
 	 *  guides the user through installing git instead of failing later with raw
 	 *  spawn errors.
 	 */
-	envCheck: () => typedError<EnvStatus, EgError>(__TAURI_INVOKE("env_check")),
+	envCheck: () => typedError<EnvStatus, EgError_Serialize>(__TAURI_INVOKE("env_check")),
 	/**
 	 *  Opens (or focuses) the repository at `path` and starts its fs-watch worker
 	 *  (m1-plan R-01/R-03).
 	 */
-	repoOpen: (path: string) => typedError<RepoSummary, EgError>(__TAURI_INVOKE("repo_open", { path })),
+	repoOpen: (path: string) => typedError<RepoSummary, EgError_Serialize>(__TAURI_INVOKE("repo_open", { path })),
 	/**
 	 *  `git init` at `path`; opening an existing repository is idempotent
 	 *  (m1-plan F-06 新建入口).
 	 */
-	repoInit: (path: string) => typedError<RepoSummary, EgError>(__TAURI_INVOKE("repo_init", { path })),
+	repoInit: (path: string) => typedError<RepoSummary, EgError_Serialize>(__TAURI_INVOKE("repo_init", { path })),
 	/**  Closes the repository worker and stops watching its worktree. */
-	repoClose: (repoId: string) => typedError<null, EgError>(__TAURI_INVOKE("repo_close", { repoId })),
+	repoClose: (repoId: string) => typedError<null, EgError_Serialize>(__TAURI_INVOKE("repo_close", { repoId })),
 	/**
 	 *  Three-zone working-tree status; runs on the repo worker thread off the
 	 *  IPC path (m1-plan R-02).
 	 */
-	statusGet: (repoId: string) => typedError<StatusReport, EgError>(__TAURI_INVOKE("status_get", { repoId })),
+	statusGet: (repoId: string) => typedError<StatusReport, EgError_Serialize>(__TAURI_INVOKE("status_get", { repoId })),
 	/**  Stages or unstages whole files and returns the fresh status (m1-plan R-05). */
-	stage: (repoId: string, paths: string[], mode: StageMode) => typedError<StatusReport, EgError>(__TAURI_INVOKE("stage", { repoId, paths, mode })),
+	stage: (repoId: string, paths: string[], mode: StageMode) => typedError<StatusReport, EgError_Serialize>(__TAURI_INVOKE("stage", { repoId, paths, mode })),
 	/**
 	 *  Discard behind a safety snapshot; returns fresh status + the op id for the
 	 *  撤销 toast (m1-plan R-05, AGENTS.md 红线).
 	 */
-	discardChanges: (repoId: string, paths: string[]) => typedError<DiscardOutcome, EgError>(__TAURI_INVOKE("discard_changes", { repoId, paths })),
+	discardChanges: (repoId: string, paths: string[]) => typedError<DiscardOutcome, EgError_Serialize>(__TAURI_INVOKE("discard_changes", { repoId, paths })),
 	/**  Lists untracked entries for the clean confirmation dialog (m1-plan R-06). */
-	cleanPreview: (repoId: string) => typedError<string[], EgError>(__TAURI_INVOKE("clean_preview", { repoId })),
+	cleanPreview: (repoId: string) => typedError<string[], EgError_Serialize>(__TAURI_INVOKE("clean_preview", { repoId })),
 	/**
 	 *  Snapshot-guarded cleanup of untracked paths (m1-plan R-06); returns the
 	 *  fresh status plus the op id for the 撤销 toast.
 	 */
-	cleanExecute: (repoId: string, paths: string[]) => typedError<DiscardOutcome, EgError>(__TAURI_INVOKE("clean_execute", { repoId, paths })),
+	cleanExecute: (repoId: string, paths: string[]) => typedError<DiscardOutcome, EgError_Serialize>(__TAURI_INVOKE("clean_execute", { repoId, paths })),
 	/**  Appends ignore rules to .gitignore (m1-plan F-10). */
-	ignorePaths: (repoId: string, paths: string[], mode: IgnoreMode) => typedError<StatusReport, EgError>(__TAURI_INVOKE("ignore_paths", { repoId, paths, mode })),
+	ignorePaths: (repoId: string, paths: string[], mode: IgnoreMode) => typedError<StatusReport, EgError_Serialize>(__TAURI_INVOKE("ignore_paths", { repoId, paths, mode })),
 	/**  Restores the pre-operation content of a discard/clean (m1-plan W3). */
-	undoOperation: (repoId: string, opId: string) => typedError<StatusReport, EgError>(__TAURI_INVOKE("undo_operation", { repoId, opId })),
+	undoOperation: (repoId: string, opId: string) => typedError<StatusReport, EgError_Serialize>(__TAURI_INVOKE("undo_operation", { repoId, opId })),
 	/**
 	 *  Commits the index (or amends); rejects partial staging unless confirmed
 	 *  (m1-plan R-07 / F-12).
 	 */
-	commit: (repoId: string, request: CommitRequest) => typedError<CommitOutcome, EgError>(__TAURI_INVOKE("commit", { repoId, request })),
+	commit: (repoId: string, request: CommitRequest) => typedError<CommitOutcome, EgError_Serialize>(__TAURI_INVOKE("commit", { repoId, request })),
 	/**  Reads one config key in the repo or global scope (m1-plan R-09 / F-14). */
-	configGet: (repoId: string, scope: ConfigScope, key: string) => typedError<string | null, EgError>(__TAURI_INVOKE("config_get", { repoId, scope, key })),
+	configGet: (repoId: string, scope: ConfigScope, key: string) => typedError<string | null, EgError_Serialize>(__TAURI_INVOKE("config_get", { repoId, scope, key })),
 	/**  Writes one config key in the repo or global scope (m1-plan R-09 / F-14). */
-	configSet: (repoId: string, scope: ConfigScope, key: string, value: string) => typedError<null, EgError>(__TAURI_INVOKE("config_set", { repoId, scope, key, value })),
+	configSet: (repoId: string, scope: ConfigScope, key: string, value: string) => typedError<null, EgError_Serialize>(__TAURI_INVOKE("config_set", { repoId, scope, key, value })),
 	/**  One page of the lane-annotated history log (m1-plan R-10 / F-15). */
-	logPage: (repoId: string, offset: number, limit: number, filter: LogFilter) => typedError<LogPage, EgError>(__TAURI_INVOKE("log_page", { repoId, offset, limit, filter })),
+	logPage: (repoId: string, offset: number, limit: number, filter: LogFilter) => typedError<LogPage, EgError_Serialize>(__TAURI_INVOKE("log_page", { repoId, offset, limit, filter })),
 	/**  Commit detail with changed files (m1-plan F-16). */
-	commitDetail: (repoId: string, oid: string) => typedError<CommitDetail, EgError>(__TAURI_INVOKE("commit_detail", { repoId, oid })),
+	commitDetail: (repoId: string, oid: string) => typedError<CommitDetail, EgError_Serialize>(__TAURI_INVOKE("commit_detail", { repoId, oid })),
 	/**  Local branch short names, current first (m1-plan F-17). */
-	listBranches: (repoId: string) => typedError<string[], EgError>(__TAURI_INVOKE("list_branches", { repoId })),
+	listBranches: (repoId: string) => typedError<string[], EgError_Serialize>(__TAURI_INVOKE("list_branches", { repoId })),
 	/**  One file's unified diff (m1-plan R-12 / F-18). */
-	diffFile: (repoId: string, request: DiffRequest) => typedError<DiffResponse, EgError>(__TAURI_INVOKE("diff_file", { repoId, request })),
+	diffFile: (repoId: string, request: DiffRequest) => typedError<DiffResponse, EgError_Serialize>(__TAURI_INVOKE("diff_file", { repoId, request })),
 	/**  Hunk/line-level staging into the index (m1-plan R-13 / F-19). */
-	stageLines: (repoId: string, request: StageLinesRequest) => typedError<StatusReport, EgError>(__TAURI_INVOKE("stage_lines", { repoId, request })),
+	stageLines: (repoId: string, request: StageLinesRequest) => typedError<StatusReport, EgError_Serialize>(__TAURI_INVOKE("stage_lines", { repoId, request })),
 	/**  Branch board data (m1-plan F-21 / R-15). */
-	branchList: (repoId: string) => typedError<BranchInfo[], EgError>(__TAURI_INVOKE("branch_list", { repoId })),
+	branchList: (repoId: string) => typedError<BranchInfo[], EgError_Serialize>(__TAURI_INVOKE("branch_list", { repoId })),
 	/**  Creates a branch at HEAD or the given commit (m1-plan R-15). */
-	branchCreate: (repoId: string, name: string, oid: string | null) => typedError<BranchInfo, EgError>(__TAURI_INVOKE("branch_create", { repoId, name, oid })),
+	branchCreate: (repoId: string, name: string, oid: string | null) => typedError<BranchInfo, EgError_Serialize>(__TAURI_INVOKE("branch_create", { repoId, name, oid })),
 	/**  Renames a branch (m1-plan R-15); renaming the current one moves HEAD. */
-	branchRename: (repoId: string, oldName: string, newName: string) => typedError<null, EgError>(__TAURI_INVOKE("branch_rename", { repoId, oldName, newName })),
+	branchRename: (repoId: string, oldName: string, newName: string) => typedError<null, EgError_Serialize>(__TAURI_INVOKE("branch_rename", { repoId, oldName, newName })),
 	/**
 	 *  Deletes a branch into the recycle bin (m1-plan R-16); returns the op id
 	 *  for the 撤销 toast.
 	 */
-	branchDelete: (repoId: string, name: string) => typedError<string, EgError>(__TAURI_INVOKE("branch_delete", { repoId, name })),
+	branchDelete: (repoId: string, name: string) => typedError<string, EgError_Serialize>(__TAURI_INVOKE("branch_delete", { repoId, name })),
 	/**  Switches branches (m1-plan R-15); rejects a dirty worktree. */
-	branchSwitch: (repoId: string, name: string) => typedError<StatusReport, EgError>(__TAURI_INVOKE("branch_switch", { repoId, name })),
+	branchSwitch: (repoId: string, name: string) => typedError<StatusReport, EgError_Serialize>(__TAURI_INVOKE("branch_switch", { repoId, name })),
 	/**  Tag list (m1-plan R-17). */
-	tagList: (repoId: string) => typedError<TagInfo[], EgError>(__TAURI_INVOKE("tag_list", { repoId })),
+	tagList: (repoId: string) => typedError<TagInfo[], EgError_Serialize>(__TAURI_INVOKE("tag_list", { repoId })),
 	/**  Creates a lightweight or annotated tag (m1-plan R-17). */
-	tagCreate: (repoId: string, name: string, oid: string, message: string | null) => typedError<TagInfo, EgError>(__TAURI_INVOKE("tag_create", { repoId, name, oid, message })),
+	tagCreate: (repoId: string, name: string, oid: string, message: string | null) => typedError<TagInfo, EgError_Serialize>(__TAURI_INVOKE("tag_create", { repoId, name, oid, message })),
 	/**  Deletes a tag into the recycle bin (m1-plan R-17); returns the op id. */
-	tagDelete: (repoId: string, name: string) => typedError<string, EgError>(__TAURI_INVOKE("tag_delete", { repoId, name })),
+	tagDelete: (repoId: string, name: string) => typedError<string, EgError_Serialize>(__TAURI_INVOKE("tag_delete", { repoId, name })),
 	/**  Stash list (m1-plan R-18 / F-22). */
-	stashList: (repoId: string) => typedError<StashEntry[], EgError>(__TAURI_INVOKE("stash_list", { repoId })),
+	stashList: (repoId: string) => typedError<StashEntry[], EgError_Serialize>(__TAURI_INVOKE("stash_list", { repoId })),
 	/**  Stashes worktree + index; untracked files optional (m1-plan R-18). */
-	stashPush: (repoId: string, message: string | null, includeUntracked: boolean) => typedError<StatusReport, EgError>(__TAURI_INVOKE("stash_push", { repoId, message, includeUntracked })),
+	stashPush: (repoId: string, message: string | null, includeUntracked: boolean) => typedError<StatusReport, EgError_Serialize>(__TAURI_INVOKE("stash_push", { repoId, message, includeUntracked })),
 	/**  Applies (and with `pop` drops) a stash entry (m1-plan R-18). */
-	stashApply: (repoId: string, index: number, pop: boolean) => typedError<StatusReport, EgError>(__TAURI_INVOKE("stash_apply", { repoId, index, pop })),
+	stashApply: (repoId: string, index: number, pop: boolean) => typedError<StatusReport, EgError_Serialize>(__TAURI_INVOKE("stash_apply", { repoId, index, pop })),
 	/**  Drops a stash entry after explicit confirmation (m1-plan R-18). */
-	stashDrop: (repoId: string, index: number) => typedError<StashEntry[], EgError>(__TAURI_INVOKE("stash_drop", { repoId, index })),
+	stashDrop: (repoId: string, index: number) => typedError<StashEntry[], EgError_Serialize>(__TAURI_INVOKE("stash_drop", { repoId, index })),
 	/**
 	 *  Starts merging `name` into the current branch (m1-plan R-19). A conflicted
 	 *  merge parks itself (`MERGE_HEAD` + conflict index) and reports its files.
 	 */
-	mergeStart: (repoId: string, name: string, noFf: boolean) => typedError<MergeOutcome, EgError>(__TAURI_INVOKE("merge_start", { repoId, name, noFf })),
+	mergeStart: (repoId: string, name: string, noFf: boolean) => typedError<MergeOutcome, EgError_Serialize>(__TAURI_INVOKE("merge_start", { repoId, name, noFf })),
 	/**  Merge progress while parked on conflicts (m1-plan R-19 / F-24). */
 	mergeState: (repoId: string) => typedError<{
 	/**  Prefilled merge commit message (from MERGE_MSG). */
 	message: string | null,
 	/**  Names (or short oids) of the branches being merged in. */
 	theirs: string[],
-} | null, EgError>(__TAURI_INVOKE("merge_state", { repoId })),
+} | null, EgError_Serialize>(__TAURI_INVOKE("merge_state", { repoId })),
 	/**  Aborts a parked merge and hard-resets to the pre-merge state (R-19). */
-	mergeAbort: (repoId: string) => typedError<StatusReport, EgError>(__TAURI_INVOKE("merge_abort", { repoId })),
+	mergeAbort: (repoId: string) => typedError<StatusReport, EgError_Serialize>(__TAURI_INVOKE("merge_abort", { repoId })),
 	/**  Conflicted files with three-stage contents and parsed blocks (R-21 / F-24). */
-	conflictsGet: (repoId: string) => typedError<ConflictFile[], EgError>(__TAURI_INVOKE("conflicts_get", { repoId })),
+	conflictsGet: (repoId: string) => typedError<ConflictFile[], EgError_Serialize>(__TAURI_INVOKE("conflicts_get", { repoId })),
 	/**  Writes one resolved conflict file and stages it (m1-plan R-21). */
-	conflictResolve: (repoId: string, path: string, content: string) => typedError<StatusReport, EgError>(__TAURI_INVOKE("conflict_resolve", { repoId, path, content })),
+	conflictResolve: (repoId: string, path: string, content: string) => typedError<StatusReport, EgError_Serialize>(__TAURI_INVOKE("conflict_resolve", { repoId, path, content })),
 	/**  Reverts the given commits into the index + worktree (m1-plan R-20). */
-	revertCommits: (repoId: string, oids: string[]) => typedError<StatusReport, EgError>(__TAURI_INVOKE("revert_commits", { repoId, oids })),
+	revertCommits: (repoId: string, oids: string[]) => typedError<StatusReport, EgError_Serialize>(__TAURI_INVOKE("revert_commits", { repoId, oids })),
 	/**
 	 *  Resets to `target` with the three git modes (m1-plan R-20). Hard resets
 	 *  snapshot first and return an op id for the 撤销 toast.
 	 */
-	resetCommits: (repoId: string, mode: ResetMode, target: string | null) => typedError<ResetOutcome, EgError>(__TAURI_INVOKE("reset_commits", { repoId, mode, target })),
+	resetCommits: (repoId: string, mode: ResetMode, target: string | null) => typedError<ResetOutcome, EgError_Serialize>(__TAURI_INVOKE("reset_commits", { repoId, mode, target })),
 	/**
 	 *  Fetches a remote (m1-plan R-22): CLI with live progress, then a worker
 	 *  status refresh (fs-watch also fires from the ref updates).
 	 */
-	syncFetch: (repoId: string, remote: string, prune: boolean) => typedError<StatusReport, EgError>(__TAURI_INVOKE("sync_fetch", { repoId, remote, prune })),
+	syncFetch: (repoId: string, remote: string, prune: boolean) => typedError<StatusReport, EgError_Serialize>(__TAURI_INVOKE("sync_fetch", { repoId, remote, prune })),
 	/**
 	 *  Pulls (R-22/F-27): CLI fetch with progress, then the W8 merge machinery
 	 *  integrates the upstream — conflicts land in the wizard, ff-only refuses
 	 *  divergence so the 分叉情况选择 can offer a merge.
 	 */
-	syncPull: (repoId: string, remote: string, branch: string, strategy: SyncStrategy) => typedError<MergeOutcome, EgError>(__TAURI_INVOKE("sync_pull", { repoId, remote, branch, strategy })),
+	syncPull: (repoId: string, remote: string, branch: string, strategy: SyncStrategy) => typedError<MergeOutcome, EgError_Serialize>(__TAURI_INVOKE("sync_pull", { repoId, remote, branch, strategy })),
 	/**
 	 *  Pushes the current branch (R-22). Force pushes record the pre-push remote
 	 *  tip in eg-safety first (强推可回滚): undo pushes the old tip back.
@@ -143,29 +143,40 @@ export const commands = {
 	syncPush: (repoId: string, remote: string, branch: string, force: boolean, credentials: {
 	username: string,
 	password: string,
-} | null) => typedError<StatusReport, EgError>(__TAURI_INVOKE("sync_push", { repoId, remote, branch, force, credentials })),
+} | null) => typedError<StatusReport, EgError_Serialize>(__TAURI_INVOKE("sync_push", { repoId, remote, branch, force, credentials })),
 	/**  Connectivity test (R-24): `git ls-remote`, reports ref count. */
-	remoteTest: (repoId: string, remote: string) => typedError<number, EgError>(__TAURI_INVOKE("remote_test", { repoId, remote })),
+	remoteTest: (repoId: string, remote: string) => typedError<number, EgError_Serialize>(__TAURI_INVOKE("remote_test", { repoId, remote })),
 	/**  Clones a repository (W2 顺延 + m1-plan R-22), then opens it (F-06 clone 入口). */
-	repoClone: (url: string, path: string) => typedError<RepoSummary, EgError>(__TAURI_INVOKE("repo_clone", { url, path })),
-	remoteList: (repoId: string) => typedError<RemoteInfo[], EgError>(__TAURI_INVOKE("remote_list", { repoId })),
+	repoClone: (url: string, path: string) => typedError<RepoSummary, EgError_Serialize>(__TAURI_INVOKE("repo_clone", { url, path })),
+	remoteList: (repoId: string) => typedError<RemoteInfo[], EgError_Serialize>(__TAURI_INVOKE("remote_list", { repoId })),
 	/**  Adds a remote (R-24); the summary refreshes via fs-watch. */
-	remoteAdd: (repoId: string, name: string, url: string) => typedError<null, EgError>(__TAURI_INVOKE("remote_add", { repoId, name, url })),
-	remoteRename: (repoId: string, oldName: string, newName: string) => typedError<null, EgError>(__TAURI_INVOKE("remote_rename", { repoId, oldName, newName })),
-	remoteRemove: (repoId: string, name: string) => typedError<null, EgError>(__TAURI_INVOKE("remote_remove", { repoId, name })),
-	remoteSetUrl: (repoId: string, name: string, url: string) => typedError<null, EgError>(__TAURI_INVOKE("remote_set_url", { repoId, name, url })),
+	remoteAdd: (repoId: string, name: string, url: string) => typedError<null, EgError_Serialize>(__TAURI_INVOKE("remote_add", { repoId, name, url })),
+	remoteRename: (repoId: string, oldName: string, newName: string) => typedError<null, EgError_Serialize>(__TAURI_INVOKE("remote_rename", { repoId, oldName, newName })),
+	remoteRemove: (repoId: string, name: string) => typedError<null, EgError_Serialize>(__TAURI_INVOKE("remote_remove", { repoId, name })),
+	remoteSetUrl: (repoId: string, name: string, url: string) => typedError<null, EgError_Serialize>(__TAURI_INVOKE("remote_set_url", { repoId, name, url })),
 	/**  Redoes the most recent undone operation (R-25 撤销/重做引擎). */
-	redoOperation: (repoId: string) => typedError<DiscardOutcome, EgError>(__TAURI_INVOKE("redo_operation", { repoId })),
+	redoOperation: (repoId: string) => typedError<DiscardOutcome, EgError_Serialize>(__TAURI_INVOKE("redo_operation", { repoId })),
 	/**  操作时间线 (m1-plan F-28): reflog + safety op log merged, newest first. */
-	timelineGet: (repoId: string, limit: number | null) => typedError<TimelineEntry[], EgError>(__TAURI_INVOKE("timeline_get", { repoId, limit })),
+	timelineGet: (repoId: string, limit: number | null) => typedError<TimelineEntry[], EgError_Serialize>(__TAURI_INVOKE("timeline_get", { repoId, limit })),
 	/**  恢复到此状态 (F-28): snapshot-protected hard reset to a timeline entry. */
-	timelineRestore: (repoId: string, oid: string) => typedError<ResetOutcome, EgError>(__TAURI_INVOKE("timeline_restore", { repoId, oid })),
+	timelineRestore: (repoId: string, oid: string) => typedError<ResetOutcome, EgError_Serialize>(__TAURI_INVOKE("timeline_restore", { repoId, oid })),
 	/**  Sets (or clears) a branch's upstream (W7 顺延, m1-plan W9). */
-	branchSetUpstream: (repoId: string, branch: string, upstream: string | null) => typedError<BranchInfo, EgError>(__TAURI_INVOKE("branch_set_upstream", { repoId, branch, upstream })),
+	branchSetUpstream: (repoId: string, branch: string, upstream: string | null) => typedError<BranchInfo, EgError_Serialize>(__TAURI_INVOKE("branch_set_upstream", { repoId, branch, upstream })),
 	/**  Bottom-bar 撤销/重做 availability (m1-plan R-25). */
-	undoRedoState: (repoId: string) => typedError<UndoRedoState, EgError>(__TAURI_INVOKE("undo_redo_state", { repoId })),
+	undoRedoState: (repoId: string) => typedError<UndoRedoState, EgError_Serialize>(__TAURI_INVOKE("undo_redo_state", { repoId })),
 	/**  Remote branch short names for the set-upstream dialog. */
-	remoteBranchList: (repoId: string) => typedError<string[], EgError>(__TAURI_INVOKE("remote_branch_list", { repoId })),
+	remoteBranchList: (repoId: string) => typedError<string[], EgError_Serialize>(__TAURI_INVOKE("remote_branch_list", { repoId })),
+	/**  Absolute path of the rolling log directory (viewer header + 打开文件夹). */
+	logsDir: () => typedError<string, EgError_Serialize>(__TAURI_INVOKE("logs_dir")),
+	/**  Rolling log files, newest first (viewer file picker). */
+	logsList: () => typedError<LogFileInfo[], EgError_Serialize>(__TAURI_INVOKE("logs_list")),
+	/**  Tail of one log file (viewer content pane). */
+	logsRead: (fileName: string, maxBytes: number | null) => typedError<LogContent, EgError_Serialize>(__TAURI_INVOKE("logs_read", { fileName, maxBytes })),
+	/**
+	 *  Frontend-originated log line (window errors, manual appLog calls). Routed
+	 *  through tracing so web lines share the file sink; best-effort by design.
+	 */
+	logWrite: (level: string, scope: string, message: string) => typedError<null, EgError_Serialize>(__TAURI_INVOKE("log_write", { level, scope, message })),
 };
 
 /** Events */
@@ -376,30 +387,69 @@ export type DiscardOutcome = {
 	status: StatusReport,
 };
 
-export type EgError = 
-/**  Path is not a Git repository (or cannot be opened). */
-{ code: "repo_not_found"; path: string } | 
+export type EgError = EgError_Serialize | EgError_Deserialize;
+
+export type EgError_Deserialize = 
+/**
+ *  Path is not a Git repository (or cannot be opened). `detail` carries
+ *  the underlying libgit2/IO message when there is one.
+ */
+({ code: "repo_not_found"; path: string; detail: string | null }) & { confirm_required?: never; context?: never; feature?: never; kind?: never; paths?: never; provider?: never; state?: never; url?: never } | 
 /**  The worktree has uncommitted changes that the operation would clobber. */
-{ code: "dirty_worktree"; paths: string[] } | 
-/**  Remote connection failed; `kind` distinguishes dns/timeout/proxy. */
-{ code: "network"; kind: string; url: string } | 
+({ code: "dirty_worktree"; paths: string[] }) & { confirm_required?: never; context?: never; detail?: never; feature?: never; kind?: never; path?: never; provider?: never; state?: never; url?: never } | 
+/**
+ *  Remote connection failed; `kind` distinguishes dns/timeout/proxy.
+ *  `detail` carries the redacted git stderr tail (the actual reason).
+ */
+({ code: "network"; kind: string; url: string; detail: string | null }) & { confirm_required?: never; context?: never; feature?: never; path?: never; paths?: never; provider?: never; state?: never } | 
 /**  Remote rejected our credentials. */
-{ code: "auth"; provider: string } | 
+({ code: "auth"; provider: string; detail: string | null }) & { confirm_required?: never; context?: never; feature?: never; kind?: never; path?: never; paths?: never; state?: never; url?: never } | 
 /**  Repository is mid-merge/rebase with unresolved conflicts. */
-{ code: "conflict_state"; state: string } | 
+({ code: "conflict_state"; state: string; detail: string | null }) & { confirm_required?: never; context?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; url?: never } | 
 /**  Destructive operation requires an explicit UI confirmation round-trip. */
-{ code: "unsafe_operation"; confirm_required: string } | 
+({ code: "unsafe_operation"; confirm_required: string }) & { context?: never; detail?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; url?: never } | 
 /**  Feature exists in the model but is not implemented yet. */
-{ code: "not_supported"; feature: string } | 
+({ code: "not_supported"; feature: string }) & { confirm_required?: never; context?: never; detail?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; url?: never } | 
 /**
  *  The `git` executable is not available on PATH (PRD §7: EasyGit never
  *  bundles git; the UI guides the user through installing it instead).
  */
-{ code: "git_missing" } | 
+({ code: "git_missing" }) & { confirm_required?: never; context?: never; detail?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; url?: never } | 
 /**  A long task was cancelled by the user. */
-{ code: "cancelled" } | 
+({ code: "cancelled" }) & { confirm_required?: never; context?: never; detail?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; url?: never } | 
 /**  Anything unexpected; `context` lands in the local log file. */
-{ code: "internal"; context: string };
+({ code: "internal"; context: string }) & { confirm_required?: never; detail?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; url?: never };
+
+export type EgError_Serialize = 
+/**
+ *  Path is not a Git repository (or cannot be opened). `detail` carries
+ *  the underlying libgit2/IO message when there is one.
+ */
+({ code: "repo_not_found"; path: string; detail?: string | null }) & { confirm_required?: never; context?: never; feature?: never; kind?: never; paths?: never; provider?: never; state?: never; url?: never } | 
+/**  The worktree has uncommitted changes that the operation would clobber. */
+({ code: "dirty_worktree"; paths: string[] }) & { confirm_required?: never; context?: never; detail?: never; feature?: never; kind?: never; path?: never; provider?: never; state?: never; url?: never } | 
+/**
+ *  Remote connection failed; `kind` distinguishes dns/timeout/proxy.
+ *  `detail` carries the redacted git stderr tail (the actual reason).
+ */
+({ code: "network"; kind: string; url: string; detail?: string | null }) & { confirm_required?: never; context?: never; feature?: never; path?: never; paths?: never; provider?: never; state?: never } | 
+/**  Remote rejected our credentials. */
+({ code: "auth"; provider: string; detail?: string | null }) & { confirm_required?: never; context?: never; feature?: never; kind?: never; path?: never; paths?: never; state?: never; url?: never } | 
+/**  Repository is mid-merge/rebase with unresolved conflicts. */
+({ code: "conflict_state"; state: string; detail?: string | null }) & { confirm_required?: never; context?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; url?: never } | 
+/**  Destructive operation requires an explicit UI confirmation round-trip. */
+({ code: "unsafe_operation"; confirm_required: string }) & { context?: never; detail?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; url?: never } | 
+/**  Feature exists in the model but is not implemented yet. */
+({ code: "not_supported"; feature: string }) & { confirm_required?: never; context?: never; detail?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; url?: never } | 
+/**
+ *  The `git` executable is not available on PATH (PRD §7: EasyGit never
+ *  bundles git; the UI guides the user through installing it instead).
+ */
+({ code: "git_missing" }) & { confirm_required?: never; context?: never; detail?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; url?: never } | 
+/**  A long task was cancelled by the user. */
+({ code: "cancelled" }) & { confirm_required?: never; context?: never; detail?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; url?: never } | 
+/**  Anything unexpected; `context` lands in the local log file. */
+({ code: "internal"; context: string }) & { confirm_required?: never; detail?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; url?: never };
 
 /**
  *  Environment probe result (PRD §7: detect system git ≥ 2.30, guide the
@@ -433,6 +483,27 @@ export type GraphNode = {
 
 /**  How a context-menu「忽略」entry writes .gitignore lines (m1-plan F-10). */
 export type IgnoreMode = "by_path" | "by_extension";
+
+/**
+ *  Tail content of one log file. `truncated` marks that the head was cut so
+ *  the viewer can say "仅显示末尾部分".
+ */
+export type LogContent = {
+	fileName: string,
+	content: string,
+	truncated: boolean,
+};
+
+/**
+ *  One rolling log file for the in-app viewer, newest first from [`list_log_files`].
+ *  Counts stay in u32: specta forbids BigInt-style wire types, and a rolling
+ *  daily log never approaches 4 GiB.
+ */
+export type LogFileInfo = {
+	fileName: string,
+	sizeBytes: number,
+	modifiedAt: number,
+};
 
 /**  Log filters (m1-plan F-17). `None` fields mean no restriction. */
 export type LogFilter = {

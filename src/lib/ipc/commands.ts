@@ -21,6 +21,8 @@ import {
   type EgError,
   type EnvStatus,
   type IgnoreMode,
+  type LogContent,
+  type LogFileInfo,
   type LogFilter,
   type LogPage,
   type MergeOutcome,
@@ -61,6 +63,8 @@ export type {
   EgError,
   EnvStatus,
   IgnoreMode,
+  LogContent,
+  LogFileInfo,
   LogFilter,
   LogPage,
   MergeOutcome,
@@ -602,4 +606,46 @@ export async function pickDirectory(title: string): Promise<string | null> {
 
 export function formatIpcError(error: EgErrorLike): HumanizedError {
   return humanizeEgError(error);
+}
+
+// ---------------------------------------------------------------------------
+// Log file plumbing (in-app viewer + frontend exception entry, TDD §1 sink).
+// ---------------------------------------------------------------------------
+
+/** Absolute path of the rolling log directory; null outside the Tauri shell. */
+export async function logsDir(): Promise<string | null> {
+  if (!isTauriAvailable()) return null;
+  const result = await commands.logsDir();
+  return result.status === 'ok' ? result.data : null;
+}
+
+/** Rolling log files, newest first. */
+export async function logsList(): Promise<LogFileInfo[]> {
+  const result = await commands.logsList();
+  if (result.status === 'error') throw result.error;
+  return result.data;
+}
+
+/** Tail of one log file for the viewer content pane. */
+export async function logsRead(fileName: string, maxBytes?: number): Promise<LogContent> {
+  const result = await commands.logsRead(fileName, maxBytes ?? null);
+  if (result.status === 'error') throw result.error;
+  return result.data;
+}
+
+/**
+ * One frontend log line into the Rust file sink (shared format). Best-effort:
+ * resolves silently outside the Tauri shell and never throws into the caller.
+ */
+export async function logWeb(
+  level: 'info' | 'warn' | 'error',
+  scope: string,
+  message: string,
+): Promise<void> {
+  if (!isTauriAvailable()) return;
+  try {
+    await commands.logWrite(level, scope, message);
+  } catch {
+    // Logging must never fail the caller, even when the sink is broken.
+  }
 }
