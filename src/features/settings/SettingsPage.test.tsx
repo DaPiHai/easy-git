@@ -3,21 +3,18 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SettingsPage } from './SettingsPage';
 import { ToastHost } from '../../components';
-import { useRepoStore } from '../../stores/repoStore';
 import { useUiStore } from '../../stores/uiStore';
 import { useToastStore } from '../../stores/toastStore';
 
-const getConfigMock =
-  vi.fn<(repoId: string, scope: string, key: string) => Promise<string | null>>();
-const setConfigMock =
-  vi.fn<(repoId: string, scope: string, key: string, value: string) => Promise<void>>();
+const getGlobalConfigMock = vi.fn<(key: string) => Promise<string | null>>();
+const setGlobalConfigMock = vi.fn<(key: string, value: string) => Promise<void>>();
 
 vi.mock('../../lib/ipc/commands', async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>();
   return {
     ...original,
-    getConfig: (...args: [string, string, string]) => getConfigMock(...args),
-    setConfig: (...args: [string, string, string, string]) => setConfigMock(...args),
+    getGlobalConfig: (key: string) => getGlobalConfigMock(key),
+    setGlobalConfig: (key: string, value: string) => setGlobalConfigMock(key, value),
     formatIpcError: vi.fn(() => ({ title: 'err', detail: '' })),
   };
 });
@@ -27,37 +24,23 @@ beforeEach(() => {
   localStorage.clear();
   useToastStore.setState({ toasts: [] });
   useUiStore.setState({ view: 'settings', expertMode: false });
-  useRepoStore.getState().seed({
-    repos: {
-      r1: {
-        repoId: 'r1',
-        path: '/tmp/demo',
-        name: 'demo',
-        branch: 'main',
-        headOid: null,
-        ahead: 0,
-        behind: 0,
-        isEmpty: false,
-      },
-    },
-    activeId: 'r1',
-  });
-  getConfigMock.mockImplementation((_repoId, _scope, key) =>
+  // Regression rc.2: identity must be editable with NO repository open.
+  getGlobalConfigMock.mockImplementation((key) =>
     Promise.resolve(key === 'user.name' ? 'Old Name' : 'old@example.com'),
   );
 });
 
 describe('SettingsPage (F-14)', () => {
-  it('loads the stored global identity into the inputs', async () => {
+  it('loads the stored global identity with no repository open', async () => {
     render(<SettingsPage />);
     expect(await screen.findByTestId('settings-name')).toHaveValue('Old Name');
     expect(screen.getByTestId('settings-email')).toHaveValue('old@example.com');
-    expect(getConfigMock).toHaveBeenCalledWith('r1', 'global', 'user.name');
-    expect(getConfigMock).toHaveBeenCalledWith('r1', 'global', 'user.email');
+    expect(getGlobalConfigMock).toHaveBeenCalledWith('user.name');
+    expect(getGlobalConfigMock).toHaveBeenCalledWith('user.email');
   });
 
-  it('saves both keys and toasts success', async () => {
-    setConfigMock.mockResolvedValue();
+  it('saves both keys with no repository open and toasts success', async () => {
+    setGlobalConfigMock.mockResolvedValue();
     render(
       <>
         <SettingsPage />
@@ -73,14 +56,14 @@ describe('SettingsPage (F-14)', () => {
     await userEvent.click(screen.getByTestId('settings-save'));
 
     await vi.waitFor(() => {
-      expect(setConfigMock).toHaveBeenCalledWith('r1', 'global', 'user.name', '张三');
+      expect(setGlobalConfigMock).toHaveBeenCalledWith('user.name', '张三');
     });
-    expect(setConfigMock).toHaveBeenCalledWith('r1', 'global', 'user.email', 'z@ex.com');
+    expect(setGlobalConfigMock).toHaveBeenCalledWith('user.email', 'z@ex.com');
     expect(await screen.findByText('Git 身份已保存')).toBeInTheDocument();
   });
 
   it('rejects an empty identity with an error toast', async () => {
-    setConfigMock.mockResolvedValue();
+    setGlobalConfigMock.mockResolvedValue();
     render(
       <>
         <SettingsPage />
@@ -93,7 +76,7 @@ describe('SettingsPage (F-14)', () => {
     await userEvent.clear(screen.getByTestId('settings-email'));
     await userEvent.click(screen.getByTestId('settings-save'));
     expect(await screen.findByText('用户名和邮箱都不能为空')).toBeInTheDocument();
-    expect(setConfigMock).not.toHaveBeenCalled();
+    expect(setGlobalConfigMock).not.toHaveBeenCalled();
   });
 
   it('toggles the expert mode switch', async () => {

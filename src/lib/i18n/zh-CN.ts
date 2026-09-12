@@ -388,6 +388,11 @@ export const zhCN = {
   'wizard.clone.confirm': '克隆',
   'wizard.clone.urlPlaceholder': '仓库地址，例如 https://github.com/user/repo.git',
   'wizard.clone.pathPlaceholder': '目标文件夹',
+  'wizard.clone.credentials': '私有仓库凭据（可选）',
+  'wizard.clone.credentialsDesc': '私有服务器需要登录时填写；仅用于本次克隆，不会保存到磁盘。',
+  'wizard.clone.httpWarning':
+    '该地址使用明文 HTTP，凭据将不加密传输；如服务器支持，建议改用 HTTPS 地址。',
+  'wizard.clone.authRequired': '服务器要求登录：请展开「私有仓库凭据」，填写用户名与密码后重试',
 
   // Cross-cutting wait indicator (busyStore): labels for user-initiated
   // write/network operations, shown in the bottom bar while an operation runs.

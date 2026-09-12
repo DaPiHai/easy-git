@@ -60,6 +60,14 @@ export const commands = {
 	configGet: (repoId: string, scope: ConfigScope, key: string) => typedError<string | null, EgError_Serialize>(__TAURI_INVOKE("config_get", { repoId, scope, key })),
 	/**  Writes one config key in the repo or global scope (m1-plan R-09 / F-14). */
 	configSet: (repoId: string, scope: ConfigScope, key: string, value: string) => typedError<null, EgError_Serialize>(__TAURI_INVOKE("config_set", { repoId, scope, key, value })),
+	/**
+	 *  Reads one global config key without an open repository (F-14). Machine
+	 *  level settings such as the commit identity must be editable from the
+	 *  settings page before any repository is open, so this bypasses RepoWorker.
+	 */
+	globalConfigGet: (key: string) => typedError<string | null, EgError_Serialize>(__TAURI_INVOKE("global_config_get", { key })),
+	/**  Writes one global config key without an open repository (F-14). */
+	globalConfigSet: (key: string, value: string) => typedError<null, EgError_Serialize>(__TAURI_INVOKE("global_config_set", { key, value })),
 	/**  One page of the lane-annotated history log (m1-plan R-10 / F-15). */
 	logPage: (repoId: string, offset: number, limit: number, filter: LogFilter) => typedError<LogPage, EgError_Serialize>(__TAURI_INVOKE("log_page", { repoId, offset, limit, filter })),
 	/**  Commit detail with changed files (m1-plan F-16). */
@@ -146,8 +154,15 @@ export const commands = {
 } | null) => typedError<StatusReport, EgError_Serialize>(__TAURI_INVOKE("sync_push", { repoId, remote, branch, force, credentials })),
 	/**  Connectivity test (R-24): `git ls-remote`, reports ref count. */
 	remoteTest: (repoId: string, remote: string) => typedError<number, EgError_Serialize>(__TAURI_INVOKE("remote_test", { repoId, remote })),
-	/**  Clones a repository (W2 顺延 + m1-plan R-22), then opens it (F-06 clone 入口). */
-	repoClone: (url: string, path: string) => typedError<RepoSummary, EgError_Serialize>(__TAURI_INVOKE("repo_clone", { url, path })),
+	/**
+	 *  Clones a repository (W2 顺延 + m1-plan R-22), then opens it (F-06 clone 入口).
+	 *  `credentials` is an optional session-only askpass fallback for private
+	 *  servers (same contract as `sync_push`); never persisted, never logged.
+	 */
+	repoClone: (url: string, path: string, credentials: {
+	username: string,
+	password: string,
+} | null) => typedError<RepoSummary, EgError_Serialize>(__TAURI_INVOKE("repo_clone", { url, path, credentials })),
 	remoteList: (repoId: string) => typedError<RemoteInfo[], EgError_Serialize>(__TAURI_INVOKE("remote_list", { repoId })),
 	/**  Adds a remote (R-24); the summary refreshes via fs-watch. */
 	remoteAdd: (repoId: string, name: string, url: string) => typedError<null, EgError_Serialize>(__TAURI_INVOKE("remote_add", { repoId, name, url })),

@@ -446,11 +446,19 @@ impl GitCli {
     }
 
     /// `git clone --progress <url> <path>` (W2 顺延 F-06 clone 入口).
+    ///
+    /// `credentials` enables the one-shot HTTPS/HTTP askpass fallback for
+    /// private servers (same contract as `push`): the system credential
+    /// helper is still asked first, and git falls through to askpass when it
+    /// declines — e.g. GCM refusing unencrypted HTTP remotes. None keeps
+    /// ambient behavior only. The secret is never part of argv, logs or
+    /// progress messages.
     pub fn clone(
         &self,
         url: &str,
         path: &Path,
         on_progress: Option<&Sender<SyncProgress>>,
+        credentials: Option<&PushCredentials>,
     ) -> Result<(), EgError> {
         let not_empty = path.exists()
             && std::fs::read_dir(path)
@@ -475,7 +483,9 @@ impl GitCli {
             &argrefs,
             on_progress,
             CLI_TIMEOUT_CLONE,
-            &CliAuth::default(),
+            &CliAuth {
+                credentials: credentials.cloned(),
+            },
         )?;
         if Repository::open(path).is_ok() && ok {
             Ok(())
@@ -524,6 +534,12 @@ fn humanize_network(stderr: &str, remote: Option<&str>) -> EgError {
     if lower.contains("authentication")
         || lower.contains("403")
         || lower.contains("permission denied")
+        // GCM policy refusal ("Unencrypted HTTP is not recommended for …")
+        // and the follow-up prompt failure: the server wants credentials and
+        // no source answered, so the actionable fix is supplying them.
+        || lower.contains("unencrypted")
+        || lower.contains("could not read username")
+        || lower.contains("terminal prompts disabled")
     {
         return EgError::Auth {
             provider: "git".into(),
@@ -732,8 +748,9 @@ pub fn clone_repo(
     url: &str,
     path: &Path,
     on_progress: Option<&Sender<SyncProgress>>,
+    credentials: Option<&PushCredentials>,
 ) -> Result<(), EgError> {
-    GitCli::for_path(Path::new(".")).clone(url, path, on_progress)
+    GitCli::for_path(Path::new(".")).clone(url, path, on_progress, credentials)
 }
 
 #[cfg(test)]
@@ -787,6 +804,35 @@ mod tests {
                 assert!(detail.unwrap_or_default().contains("fetch first"));
             }
             other => panic!("expected conflict_state, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn humanize_network_classifies_gcm_http_refusal_as_auth() {
+        // GCM policy refusal on a plain-HTTP GitLab remote plus the prompt
+        // failure that follows (terminal prompts disabled) — the real-world
+        // clone failure on test machines (rc.2).
+        let err = humanize_network(
+            "Cloning into 'C:\\target'...\n\
+             fatal: Unencrypted HTTP is not recommended for GitLab. Ensure the repository \
+             remote URL is using HTTPS or see https://aka.ms/gcm/unsaferemotes about how to \
+             allow unsafe remotes.\n\
+             fatal: could not read Username for 'http://47.108.131.92': terminal prompts disabled",
+            Some("http://47.108.131.92/group/repo.git"),
+        );
+        match err {
+            EgError::Auth { detail, .. } => {
+                let detail = detail.expect("auth detail carries the reason");
+                assert!(
+                    detail.contains("Unencrypted HTTP"),
+                    "GCM refusal must stay visible: {detail}"
+                );
+                assert!(
+                    detail.contains("terminal prompts disabled"),
+                    "prompt failure must stay visible: {detail}"
+                );
+            }
+            other => panic!("expected auth, got {other:?}"),
         }
     }
 

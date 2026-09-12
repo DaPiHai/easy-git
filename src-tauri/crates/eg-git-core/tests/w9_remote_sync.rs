@@ -510,10 +510,11 @@ fn clone_creates_working_repo() {
     let f = fixture_with_origin();
     let target = TempDir::new().unwrap();
     let clone_path = target.path().join("cloned");
-    remote::clone_repo(f.origin_path.to_str().unwrap(), &clone_path, None).unwrap();
+    remote::clone_repo(f.origin_path.to_str().unwrap(), &clone_path, None, None).unwrap();
     let cloned = Repository::open(&clone_path).unwrap();
     assert!(cloned.head().unwrap().peel_to_commit().is_ok());
     // Cloning into a non-empty directory is refused.
-    let err = remote::clone_repo(f.origin_path.to_str().unwrap(), &f.work_path, None).unwrap_err();
+    let err =
+        remote::clone_repo(f.origin_path.to_str().unwrap(), &f.work_path, None, None).unwrap_err();
     assert!(matches!(err, eg_types::EgError::Internal { .. }));
 }

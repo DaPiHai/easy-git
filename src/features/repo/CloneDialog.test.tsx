@@ -10,6 +10,11 @@ const cloneRepoMock = vi.fn<(...args: unknown[]) => Promise<unknown>>();
 vi.mock('../../lib/ipc/commands', () => ({
   cloneRepo: (...args: unknown[]) => cloneRepoMock(...args),
   pickDirectory: vi.fn().mockResolvedValue(null),
+  // 克隆成功后 openByPath 被 fire-and-forget：让它走 reject → humanize（mock
+  // 的 formatIpcError）就地吞掉，避免未处理的 rejection 污染测试结果。
+  openRepo: vi.fn().mockRejectedValue({ code: 'internal', context: 'skipped in test' }),
+  formatIpcError: vi.fn(() => ({ title: 'err', detail: '' })),
+  isTauriAvailable: vi.fn(() => false),
   // reportError → logger 链路会调用 logWeb；mock 工厂是整模块替换，缺了会炸
   logWeb: vi.fn().mockResolvedValue(undefined),
 }));
@@ -81,5 +86,55 @@ describe('CloneDialog failure surfacing (rc.2 真人反馈)', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('clone-error')).toBeNull();
     });
+  });
+});
+
+describe('CloneDialog credentials (rc.2 HTTP GitLab 克隆失败)', () => {
+  it('warns about plaintext HTTP when the url is http://', async () => {
+    await renderOpenDialog();
+    await userEvent.type(screen.getByTestId('clone-url-input'), 'http://47.108.131.92/a/b.git');
+    expect(screen.getByTestId('clone-http-warning')).toBeInTheDocument();
+  });
+
+  it('passes no credentials by default', async () => {
+    cloneRepoMock.mockResolvedValue({ name: 'demo', path: 'C:/tmp/demo' });
+    await renderOpenDialog();
+    await fillAndSubmit();
+    await waitFor(() => {
+      expect(cloneRepoMock).toHaveBeenCalledWith(
+        'http://example.com/demo.git',
+        'C:/tmp/demo',
+        null,
+      );
+    });
+  });
+
+  it('passes typed session credentials through to the clone command', async () => {
+    cloneRepoMock.mockResolvedValue({ name: 'demo', path: 'C:/tmp/demo' });
+    await renderOpenDialog();
+    await userEvent.click(screen.getByTestId('clone-creds-toggle'));
+    await userEvent.type(screen.getByTestId('clone-username-input'), 'zhang');
+    await userEvent.type(screen.getByTestId('clone-password-input'), 'pw');
+    await fillAndSubmit();
+    await waitFor(() => {
+      expect(cloneRepoMock).toHaveBeenCalledWith('http://example.com/demo.git', 'C:/tmp/demo', {
+        username: 'zhang',
+        password: 'pw',
+      });
+    });
+  });
+
+  it('expands the credentials form and guides the user on an auth failure', async () => {
+    cloneRepoMock.mockRejectedValue({
+      code: 'auth',
+      provider: 'git',
+      detail: 'fatal: Unencrypted HTTP is not recommended for GitLab',
+    });
+    await renderOpenDialog();
+    await fillAndSubmit();
+    await screen.findByTestId('clone-error');
+    // The credentials form auto-expands with an actionable hint.
+    expect(screen.getByTestId('clone-username-input')).toBeInTheDocument();
+    expect(screen.getByTestId('clone-auth-hint')).toHaveTextContent('填写用户名与密码');
   });
 });

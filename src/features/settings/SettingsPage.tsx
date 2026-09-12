@@ -1,9 +1,9 @@
 import { Check, Save, UserRound } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { t } from '../../lib/i18n';
+import { getGlobalConfig, setGlobalConfig } from '../../lib/ipc/commands';
 import { reportError } from '../../lib/ipc/report';
 import { SHORTCUTS } from '../../lib/shortcuts';
-import { useRepoStore } from '../../stores/repoStore';
 import { useUiStore } from '../../stores/uiStore';
 import { toast } from '../../stores/toastStore';
 import { ThemeToggle } from '../shell/ThemeToggle';
@@ -51,26 +51,24 @@ function SectionCard({
 }
 
 function IdentitySection() {
-  const configGet = useRepoStore((s) => s.configGet);
-  const configSet = useRepoStore((s) => s.configSet);
-  const activeId = useRepoStore((s) => s.activeId);
+  // Global config direct (rc.2 fix): identity is machine-level and must be
+  // editable with NO repository open (repo-local overrides still win at
+  // commit time; the commit box shows the effective identity warning).
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // Global scope: identity is machine-level (repo-local overrides still win at
-  // commit time; the commit box shows the effective identity warning).
   useEffect(() => {
-    if (!activeId || loaded) return;
-    void Promise.all([configGet('global', 'user.name'), configGet('global', 'user.email')]).then(
+    if (loaded) return;
+    void Promise.all([getGlobalConfig('user.name'), getGlobalConfig('user.email')]).then(
       ([storedName, storedEmail]) => {
         setName(storedName ?? '');
         setEmail(storedEmail ?? '');
         setLoaded(true);
       },
     );
-  }, [activeId, loaded, configGet]);
+  }, [loaded]);
 
   const save = () => {
     if (!name.trim() || !email.trim()) {
@@ -78,8 +76,8 @@ function IdentitySection() {
       return;
     }
     setSaving(true);
-    void configSet('global', 'user.name', name.trim())
-      .then(() => configSet('global', 'user.email', email.trim()))
+    void setGlobalConfig('user.name', name.trim())
+      .then(() => setGlobalConfig('user.email', email.trim()))
       .then(() => toast.success(t('settings.identity.saved')))
       .catch((error) => reportError(error, 'settings.identity'))
       .finally(() => setSaving(false));

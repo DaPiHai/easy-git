@@ -25,6 +25,8 @@ fn main() {
             easy_git::commands::commit,
             easy_git::commands::config_get,
             easy_git::commands::config_set,
+            easy_git::commands::global_config_get,
+            easy_git::commands::global_config_set,
             easy_git::commands::log_page,
             easy_git::commands::commit_detail,
             easy_git::commands::list_branches,

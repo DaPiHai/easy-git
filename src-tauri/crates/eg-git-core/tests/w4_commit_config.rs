@@ -2,11 +2,18 @@
 //! staging confirmation, identity resolution, config get/set.
 
 use std::path::Path;
+use std::sync::Mutex;
 
 use eg_git_core::{commit, config};
 use eg_types::{CommitRequest, ConfigScope};
 use git2::Repository;
 use tempfile::TempDir;
+
+/// Tests touching process-global libgit2 config state (search paths, the
+/// default/global config) must not run concurrently: sealing or repointing
+/// search paths in one test breaks set/get in another. git2 state is
+/// per-process, so an in-file lock serializes exactly those tests.
+static CONFIG_LOCK: Mutex<()> = Mutex::new(());
 
 fn init_repo() -> (TempDir, Repository) {
     let dir = TempDir::new().expect("temp dir");
@@ -194,6 +201,7 @@ fn partial_staging_requires_confirmation() {
 
 #[test]
 fn missing_identity_is_a_clear_error() {
+    let _guard = CONFIG_LOCK.lock().unwrap();
     // Hermetic: repoint libgit2's global/xdg/system config search paths at an
     // empty dir so the "no identity" precondition holds on any host. libgit2
     // reads env once at init, so GIT_CONFIG_GLOBAL env vars don't work here.
@@ -244,6 +252,7 @@ fn empty_subject_rejected() {
 
 #[test]
 fn config_repo_and_global_roundtrip() {
+    let _guard = CONFIG_LOCK.lock().unwrap();
     let (_dir, repo) = init_repo();
 
     config::config_set(Some(&repo), ConfigScope::Repo, "core.autocrlf", "input").unwrap();
@@ -269,4 +278,21 @@ fn config_repo_and_global_roundtrip() {
         config::config_get(Some(&repo), ConfigScope::Repo, "no.such.key").unwrap(),
         None
     );
+}
+
+#[test]
+fn config_global_roundtrip_without_open_repo() {
+    let _guard = CONFIG_LOCK.lock().unwrap();
+    // The settings page must write the commit identity with NO repository
+    // open (rc.2 regression): the Global branch of config_get/config_set is
+    // repo-free, `None` must be accepted end to end.
+    unsafe {
+        std::env::set_var("GIT_CONFIG_GLOBAL", "/tmp/eg-test-gitconfig-w4-norepo");
+    }
+    config::config_set(None, ConfigScope::Global, "easygit.testkey", "ok").unwrap();
+    assert_eq!(
+        config::config_get(None, ConfigScope::Global, "easygit.testkey").unwrap(),
+        Some("ok".into())
+    );
+    let _ = std::fs::remove_file("/tmp/eg-test-gitconfig-w4-norepo");
 }

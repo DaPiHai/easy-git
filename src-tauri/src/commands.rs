@@ -7,8 +7,9 @@ use eg_safety::Safety;
 use eg_types::{
     AppVersion, BranchInfo, CommitDetail, CommitOutcome, CommitRequest, ConfigScope, ConflictFile,
     DiffRequest, DiffResponse, EgError, EnvStatus, IgnoreMode, LogFilter, LogPage, MergeOutcome,
-    MergeState, RemoteInfo, RepoSummary, ResetMode, ResetOutcome, StageLinesRequest, StageMode,
-    StashEntry, StatusReport, SyncStrategy, TagInfo, TimelineEntry, UndoRedoState,
+    MergeState, PushCredentials, RemoteInfo, RepoSummary, ResetMode, ResetOutcome,
+    StageLinesRequest, StageMode, StashEntry, StatusReport, SyncStrategy, TagInfo, TimelineEntry,
+    UndoRedoState,
 };
 use tauri::{AppHandle, State};
 use tauri_specta::Event;
@@ -220,6 +221,23 @@ pub async fn config_set(
 ) -> Result<(), EgError> {
     let handle = manager.get(&repo_id)?;
     run_blocking(move || handle.config_set(scope, key, value)).await
+}
+
+/// Reads one global config key without an open repository (F-14). Machine
+/// level settings such as the commit identity must be editable from the
+/// settings page before any repository is open, so this bypasses RepoWorker.
+#[tauri::command]
+#[specta::specta]
+pub async fn global_config_get(key: String) -> Result<Option<String>, EgError> {
+    run_blocking(move || eg_git_core::config::config_get(None, ConfigScope::Global, &key)).await
+}
+
+/// Writes one global config key without an open repository (F-14).
+#[tauri::command]
+#[specta::specta]
+pub async fn global_config_set(key: String, value: String) -> Result<(), EgError> {
+    run_blocking(move || eg_git_core::config::config_set(None, ConfigScope::Global, &key, &value))
+        .await
 }
 
 /// One page of the lane-annotated history log (m1-plan R-10 / F-15).
@@ -669,6 +687,8 @@ pub async fn remote_test(
 }
 
 /// Clones a repository (W2 顺延 + m1-plan R-22), then opens it (F-06 clone 入口).
+/// `credentials` is an optional session-only askpass fallback for private
+/// servers (same contract as `sync_push`); never persisted, never logged.
 #[tauri::command]
 #[specta::specta]
 pub async fn repo_clone(
@@ -676,12 +696,18 @@ pub async fn repo_clone(
     manager: State<'_, RepoManager>,
     url: String,
     path: String,
+    credentials: Option<PushCredentials>,
 ) -> Result<RepoSummary, EgError> {
     let (tx, join) = sync_progress_sink(&app, "clone".to_string(), "clone");
     let clone_path = path.clone();
     let clone_url = url.clone();
     let result = run_blocking(move || {
-        eg_git_core::remote::clone_repo(&clone_url, std::path::Path::new(&clone_path), Some(&tx))
+        eg_git_core::remote::clone_repo(
+            &clone_url,
+            std::path::Path::new(&clone_path),
+            Some(&tx),
+            credentials.as_ref(),
+        )
     })
     .await;
     finish_progress_sink(&app, "clone".to_string(), "clone", join, result.is_ok()).await;

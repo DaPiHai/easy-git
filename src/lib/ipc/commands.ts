@@ -279,6 +279,19 @@ export async function setConfig(
   if (result.status === 'error') throw result.error;
 }
 
+/** Reads one global config key with no repository open (settings identity). */
+export async function getGlobalConfig(key: string): Promise<string | null> {
+  const result = await commands.globalConfigGet(key);
+  if (result.status === 'error') throw result.error;
+  return result.data;
+}
+
+/** Writes one global config key with no repository open (settings identity). */
+export async function setGlobalConfig(key: string, value: string): Promise<void> {
+  const result = await tracked('setGlobalConfig', () => commands.globalConfigSet(key, value));
+  if (result.status === 'error') throw result.error;
+}
+
 /** One page of the lane-annotated history log (m1-plan R-10 / F-15). */
 export async function logPage(
   repoId: string,
@@ -520,8 +533,16 @@ export async function remoteTest(repoId: string, remote: string): Promise<number
   return r.data;
 }
 
-export async function cloneRepo(url: string, path: string): Promise<RepoSummary> {
-  const r = await tracked('cloneRepo', () => commands.repoClone(url, path));
+/**
+ * Clones `url` into `path`. `credentials` is an optional session-only askpass
+ * fallback for private servers; never persisted (same contract as push).
+ */
+export async function cloneRepo(
+  url: string,
+  path: string,
+  credentials?: PushCredentials | null,
+): Promise<RepoSummary> {
+  const r = await tracked('cloneRepo', () => commands.repoClone(url, path, credentials ?? null));
   if (r.status === 'error') throw r.error;
   return r.data;
 }
