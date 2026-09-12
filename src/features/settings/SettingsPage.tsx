@@ -1,6 +1,7 @@
 import { Check, Save, UserRound } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { t } from '../../lib/i18n';
+import { reportError } from '../../lib/ipc/report';
 import { SHORTCUTS } from '../../lib/shortcuts';
 import { useRepoStore } from '../../stores/repoStore';
 import { useUiStore } from '../../stores/uiStore';
@@ -80,7 +81,7 @@ function IdentitySection() {
     void configSet('global', 'user.name', name.trim())
       .then(() => configSet('global', 'user.email', email.trim()))
       .then(() => toast.success(t('settings.identity.saved')))
-      .catch(() => toast.error(t('toast.actionFailed')))
+      .catch((error) => reportError(error, 'settings.identity'))
       .finally(() => setSaving(false));
   };
 

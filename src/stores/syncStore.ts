@@ -280,7 +280,7 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
           await attempt(creds);
         } catch (retryError) {
           if ((retryError as EgErrorLike).code === 'auth') {
-            toast.error(t('sync.authFailed'));
+            toast.error(t('sync.authFailed'), formatIpcError(retryError as EgErrorLike).reason);
             return 'auth';
           }
           throw retryError;

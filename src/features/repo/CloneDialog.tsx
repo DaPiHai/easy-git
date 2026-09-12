@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Button, Dialog } from '../../components';
 import { t } from '../../lib/i18n';
 import { cloneRepo, pickDirectory } from '../../lib/ipc/commands';
+import { reportError } from '../../lib/ipc/report';
 import { useRepoStore } from '../../stores/repoStore';
 import { useSyncStore } from '../../stores/syncStore';
 import { useUiStore } from '../../stores/uiStore';
@@ -18,6 +19,7 @@ export function CloneDialog() {
   const [url, setUrl] = useState('');
   const [target, setTarget] = useState('');
   const [busy, setBusy] = useState(false);
+  const [errorText, setErrorText] = useState<string | null>(null);
   const progress = useSyncStore((s) => s.progress);
 
   const valid = url.trim().length > 0 && target.trim().length > 0 && !busy;
@@ -25,14 +27,21 @@ export function CloneDialog() {
   const submit = async () => {
     if (!valid) return;
     setBusy(true);
+    setErrorText(null);
     try {
       const summary = await cloneRepo(url.trim(), target.trim());
       toast.success(t('wizard.clone.done', { name: summary.name }));
       setCloneDialogOpen(false);
       void useRepoStore.getState().openByPath(summary.path);
     } catch (error) {
-      const raw = error as { title?: string; detail?: string };
-      toast.error(raw.title ?? t('wizard.clone.failed'), raw.detail);
+      // 失败原因必须就地可见：右下角 toast 容易错过（rc.2 真人反馈），
+      // reportError 同时带出可展开的原因与「查看日志」等建议动作。
+      const humanized = reportError(error, 'clone');
+      const lines = [humanized.detail];
+      if (humanized.reason && humanized.reason !== humanized.detail) {
+        lines.push(humanized.reason);
+      }
+      setErrorText(lines.filter(Boolean).join('\n'));
     } finally {
       setBusy(false);
     }
@@ -87,6 +96,15 @@ export function CloneDialog() {
           …
         </Button>
       </div>
+      {errorText ? (
+        <p
+          role="alert"
+          data-testid="clone-error"
+          className="mt-2 rounded-md border border-danger-border bg-danger-bg px-eg-2 py-1.5 text-caption whitespace-pre-wrap break-words text-danger"
+        >
+          {errorText}
+        </p>
+      ) : null}
       {busy && progress ? (
         <p className="mt-2 truncate text-caption text-ink-subtle" data-testid="clone-progress">
           {progress.message}

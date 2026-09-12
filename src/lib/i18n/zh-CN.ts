@@ -103,7 +103,6 @@ export const zhCN = {
   'toast.staged': '已暂存 {n} 个文件',
   'toast.unstaged': '已取消暂存 {n} 个文件',
   'toast.ignored': '已写入 .gitignore',
-  'toast.actionFailed': '操作失败',
 
   'commit.title': '提交',
   'commit.subject.placeholder': '提交摘要（一句话说明这次改动）',
@@ -385,7 +384,6 @@ export const zhCN = {
   'remotes.none': '未设置',
 
   'wizard.clone.done': '已克隆 {name}',
-  'wizard.clone.failed': '克隆失败',
   'wizard.clone.running': '克隆中…',
   'wizard.clone.confirm': '克隆',
   'wizard.clone.urlPlaceholder': '仓库地址，例如 https://github.com/user/repo.git',
