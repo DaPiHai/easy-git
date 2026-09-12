@@ -259,7 +259,9 @@ Pill 形、`surface-2` 底、`caption` 12px、内边距 2×8。计数徽标：`p
 
 ### 6.11 其余标准组件
 
-对话框（`surface-2`+`hairline-strong`+12px 圆角+24px 内边距）、Toast（右下角 `surface-3`，成功/错误用语义色图标，4s 自动消失，错误可展开详情）、右键菜单（`surface-3`、8px 圆角、项高 28px、分组分隔线）、Tooltip（`surface-3`、`caption`、延迟 300ms、术语悬浮卡含英文原词+解释）、空状态（居中插画区+`ink-subtle` 说明+引导按钮）、进度条（4px 高、`primary` 填充，用于克隆/推送/向导）、骨架屏（`surface-1` 底 + 6% 白闪烁）、**全局等待条**（用户发起的写/网络操作进行中时，窗口顶部 2px `primary` 不确定进度条 + `animate-pulse`，绝对定位 `z-50` 不挤动布局；开始 150ms 内不显示、显示后至少停留 300ms，避免瞬时操作闪烁；只读查询与 fs-watch 后台刷新一律不触发）。
+对话框（`surface-2`+`hairline-strong`+12px 圆角+24px 内边距）、Toast（右下角 `surface-3`，成功/错误用语义色图标，4s 自动消失，错误可展开详情；失败原因经「详情」展开为等宽滚动块 `surface-2`，错误 toast 停留 8s——TDD §11 2026-09-12 记录）、右键菜单（`surface-3`、8px 圆角、项高 28px、分组分隔线）、Tooltip（`surface-3`、`caption`、延迟 300ms、术语悬浮卡含英文原词+解释）、空状态（居中插画区+`ink-subtle` 说明+引导按钮）、进度条（4px 高、`primary` 填充，用于克隆/推送/向导）、骨架屏（`surface-1` 底 + 6% 白闪烁）、**全局等待条**（用户发起的写/网络操作进行中时，窗口顶部 2px `primary` 不确定进度条 + `animate-pulse`，绝对定位 `z-50` 不挤动布局；开始 150ms 内不显示、显示后至少停留 300ms，避免瞬时操作闪烁；只读查询与 fs-watch 后台刷新一律不触发）。
+
+**日志面板**（设置页「日志」区，TDD §1 文件 sink 的界面入口；只读，不做终端——PRD §1.5）：复用设置页 SectionCard；首行 `surface-2` 文件下拉（每日滚动文件倒序，名称+大小）+ 右侧级别过滤 chips（全部/错误/警告/信息，选中态 `primary` 实底）；内容区 `surface-2`+`hairline` 圆角块，等宽 `caption`，`max-h-96` 内滚动，`whitespace-pre-wrap`；截断时左下注「仅显示末尾部分」；底部右侧三个次级按钮：刷新 / 复制 / 打开文件夹（opener 插件）；目录路径以等宽 `ink-tertiary` 小字收尾。空内容显示 `logs.filter.empty` 空态文案。
 
 ---
 
