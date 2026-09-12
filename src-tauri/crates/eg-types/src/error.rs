@@ -10,16 +10,35 @@ use specta::Type;
 #[derive(Debug, Clone, Serialize, Type, thiserror::Error)]
 #[serde(tag = "code", rename_all = "snake_case")]
 pub enum EgError {
-    /// Path is not a Git repository (or cannot be opened).
-    RepoNotFound { path: String },
+    /// Path is not a Git repository (or cannot be opened). `detail` carries
+    /// the underlying libgit2/IO message when there is one.
+    RepoNotFound {
+        path: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        detail: Option<String>,
+    },
     /// The worktree has uncommitted changes that the operation would clobber.
     DirtyWorktree { paths: Vec<String> },
     /// Remote connection failed; `kind` distinguishes dns/timeout/proxy.
-    Network { kind: String, url: String },
+    /// `detail` carries the redacted git stderr tail (the actual reason).
+    Network {
+        kind: String,
+        url: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        detail: Option<String>,
+    },
     /// Remote rejected our credentials.
-    Auth { provider: String },
+    Auth {
+        provider: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        detail: Option<String>,
+    },
     /// Repository is mid-merge/rebase with unresolved conflicts.
-    ConflictState { state: String },
+    ConflictState {
+        state: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        detail: Option<String>,
+    },
     /// Destructive operation requires an explicit UI confirmation round-trip.
     UnsafeOperation { confirm_required: String },
     /// Feature exists in the model but is not implemented yet.

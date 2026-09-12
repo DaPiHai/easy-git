@@ -76,6 +76,7 @@ pub fn commit(
                     "还有未解决的冲突：{}",
                     state.message.as_deref().unwrap_or("")
                 ),
+                detail: None,
             });
         }
     }

@@ -322,9 +322,11 @@ impl GitCli {
     }
 
     /// Runs a network command, humanizing auth/network failures (TDD §6).
+    /// `remote` (name or URL as given) lands in the error's `url` field.
     fn run_network(
         &self,
         args: &[&str],
+        remote: &str,
         on_progress: Option<&Sender<SyncProgress>>,
         timeout: Duration,
         auth: &CliAuth,
@@ -333,7 +335,7 @@ impl GitCli {
         if ok {
             return Ok(());
         }
-        Err(humanize_network(&stderr))
+        Err(humanize_network(&stderr, Some(remote)))
     }
 
     /// Silent idle maintenance (PRD §5.11): full inline `git gc --quiet`
@@ -368,7 +370,7 @@ impl GitCli {
             &CliAuth::default(),
         )?;
         if !ok {
-            return Err(humanize_network(&stderr));
+            return Err(humanize_network(&stderr, Some(remote)));
         }
         let mut out = Vec::new();
         for line in stderr.lines() {
@@ -400,6 +402,7 @@ impl GitCli {
         let argrefs: Vec<&str> = args.iter().map(String::as_str).collect();
         self.run_network(
             &argrefs,
+            remote,
             on_progress,
             CLI_TIMEOUT_NETWORK,
             &CliAuth::default(),
@@ -433,6 +436,7 @@ impl GitCli {
         let argrefs: Vec<&str> = args.iter().map(String::as_str).collect();
         self.run_network(
             &argrefs,
+            remote,
             on_progress,
             CLI_TIMEOUT_NETWORK,
             &CliAuth {
@@ -476,7 +480,7 @@ impl GitCli {
         if Repository::open(path).is_ok() && ok {
             Ok(())
         } else {
-            Err(humanize_network(&stderr))
+            Err(humanize_network(&stderr, Some(url)))
         }
     }
 
@@ -491,12 +495,20 @@ impl GitCli {
             format!("{oid}:{remote_ref}"),
         ];
         let argrefs: Vec<&str> = args.iter().map(String::as_str).collect();
-        self.run_network(&argrefs, None, CLI_TIMEOUT_NETWORK, &CliAuth::default())
+        self.run_network(
+            &argrefs,
+            remote,
+            None,
+            CLI_TIMEOUT_NETWORK,
+            &CliAuth::default(),
+        )
     }
 }
 
-/// Maps the last CLI stderr lines onto the EgError taxonomy (TDD §6).
-fn humanize_network(stderr: &str) -> EgError {
+/// Maps the last CLI stderr lines onto the EgError taxonomy (TDD §6). The
+/// redacted stderr tail rides along as `detail` so the UI can show the actual
+/// failure reason instead of only the category.
+fn humanize_network(stderr: &str, remote: Option<&str>) -> EgError {
     let tail: String = stderr
         .lines()
         .rev()
@@ -506,10 +518,8 @@ fn humanize_network(stderr: &str) -> EgError {
         .rev()
         .collect::<Vec<_>>()
         .join("\n");
-    tracing::error!(
-        tail = %eg_types::sensitive::redact_text(&tail),
-        "network command failed"
-    );
+    let tail = eg_types::sensitive::redact_text(&tail);
+    tracing::error!(tail = %tail, "network command failed");
     let lower = stderr.to_lowercase();
     if lower.contains("authentication")
         || lower.contains("403")
@@ -517,6 +527,7 @@ fn humanize_network(stderr: &str) -> EgError {
     {
         return EgError::Auth {
             provider: "git".into(),
+            detail: Some(tail),
         };
     }
     if lower.contains("could not resolve host")
@@ -526,17 +537,20 @@ fn humanize_network(stderr: &str) -> EgError {
     {
         return EgError::Network {
             kind: "connect".into(),
-            url: String::new(),
+            url: remote.unwrap_or_default().to_string(),
+            detail: Some(tail),
         };
     }
     if lower.contains("rejected") && lower.contains("fetch first") {
         return EgError::ConflictState {
             state: "远端有本地没有的新提交（先获取）".into(),
+            detail: Some(tail),
         };
     }
     if lower.contains("non-fast-forward") {
         return EgError::ConflictState {
             state: "远端被本地之外的提交更新过（需要先获取整合）".into(),
+            detail: Some(tail),
         };
     }
     EgError::Internal {
@@ -612,6 +626,7 @@ pub fn pull_integrate(
             if ahead > 0 && behind > 0 {
                 return Err(EgError::ConflictState {
                     state: format!("本地与 {upstream_name} 出现分叉（ahead {ahead} / behind {behind}），请选择合并"),
+                    detail: None,
                 });
             }
             if ahead > 0 {
@@ -631,7 +646,8 @@ pub fn pull_integrate(
 /// inside eg-git-core (TDD §3), the app crate only passes ids and handles.
 fn open_repo(path: &Path) -> Result<Repository, EgError> {
     Repository::open(path).map_err(|e| EgError::RepoNotFound {
-        path: format!("{} ({e})", path.display()),
+        path: path.display().to_string(),
+        detail: Some(e.to_string()),
     })
 }
 
@@ -723,6 +739,56 @@ pub fn clone_repo(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn humanize_network_attaches_redacted_stderr_tail() {
+        let err = humanize_network(
+            "remote: Invalid username or password\nfatal: unable to access 'https://u:pw@host/r.git/'\nerror: 403 forbidden",
+            Some("origin"),
+        );
+        match err {
+            EgError::Auth { detail, .. } => {
+                let detail = detail.expect("auth detail carries the reason");
+                assert!(detail.contains("403"), "{detail}");
+                assert!(
+                    !detail.contains("pw"),
+                    "credentials must be redacted: {detail}"
+                );
+            }
+            other => panic!("expected auth, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn humanize_network_fills_url_for_connect_failures() {
+        let err = humanize_network(
+            "fatal: unable to access 'https://host/r.git/': could not resolve host: host",
+            Some("origin"),
+        );
+        match err {
+            EgError::Network { url, detail, .. } => {
+                assert_eq!(url, "origin", "remote name lands in url");
+                assert!(detail
+                    .unwrap_or_default()
+                    .contains("could not resolve host"));
+            }
+            other => panic!("expected network, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn humanize_network_keeps_rejection_reasons() {
+        let err = humanize_network(
+            "! [remote rejected] main -> main (fetch first)",
+            Some("origin"),
+        );
+        match err {
+            EgError::ConflictState { detail, .. } => {
+                assert!(detail.unwrap_or_default().contains("fetch first"));
+            }
+            other => panic!("expected conflict_state, got {other:?}"),
+        }
+    }
 
     fn test_creds() -> PushCredentials {
         PushCredentials {

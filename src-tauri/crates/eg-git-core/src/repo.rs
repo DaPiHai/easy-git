@@ -6,8 +6,9 @@ use eg_types::{EgError, RepoSummary};
 
 /// Opens the repository containing `path`, searching upwards like real git.
 pub fn open(path: &Path) -> Result<git2::Repository, EgError> {
-    git2::Repository::discover(path).map_err(|_| EgError::RepoNotFound {
+    git2::Repository::discover(path).map_err(|e| EgError::RepoNotFound {
         path: path.display().to_string(),
+        detail: Some(e.to_string()),
     })
 }
 

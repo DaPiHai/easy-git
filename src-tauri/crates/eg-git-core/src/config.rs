@@ -47,6 +47,7 @@ pub fn config_set(
 fn missing_repo() -> EgError {
     EgError::RepoNotFound {
         path: "<no open repository>".into(),
+        detail: None,
     }
 }
 

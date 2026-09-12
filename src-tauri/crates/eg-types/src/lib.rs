@@ -41,6 +41,7 @@ mod tests {
     fn eg_error_serializes_with_code_tag() {
         let json = serde_json::to_string(&EgError::RepoNotFound {
             path: "/tmp/demo".into(),
+            detail: None,
         })
         .unwrap();
         assert_eq!(json, r#"{"code":"repo_not_found","path":"/tmp/demo"}"#);
@@ -50,6 +51,32 @@ mod tests {
 
         let json = serde_json::to_string(&EgError::GitMissing).unwrap();
         assert_eq!(json, r#"{"code":"git_missing"}"#);
+    }
+
+    #[test]
+    fn eg_error_detail_serializes_only_when_present() {
+        let with_detail = serde_json::to_string(&EgError::Network {
+            kind: "connect".into(),
+            url: "https://user:s3cret@host/repo.git".into(),
+            detail: Some("fatal: could not read Username".into()),
+        })
+        .unwrap();
+        // detail rides along when present; the raw URL is the caller's
+        // responsibility to redact (sensitive::redact_url).
+        assert_eq!(
+            with_detail,
+            r#"{"code":"network","kind":"connect","url":"https://user:s3cret@host/repo.git","detail":"fatal: could not read Username"}"#
+        );
+
+        let without_detail = serde_json::to_string(&EgError::Auth {
+            provider: "git".into(),
+            detail: None,
+        })
+        .unwrap();
+        assert_eq!(
+            without_detail, r#"{"code":"auth","provider":"git"}"#,
+            "absent detail must not appear as null"
+        );
     }
 
     #[test]

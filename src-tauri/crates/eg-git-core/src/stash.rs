@@ -72,6 +72,7 @@ pub fn stash_apply(
     repo.stash_apply(index as usize, Some(&mut options))
         .map_err(|e| EgError::ConflictState {
             state: format!("储藏应用冲突：{e}"),
+            detail: None,
         })?;
     if pop {
         repo.stash_drop(index as usize).map_err(err("drop"))?;

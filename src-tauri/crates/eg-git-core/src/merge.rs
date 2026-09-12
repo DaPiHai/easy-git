@@ -159,6 +159,7 @@ pub fn merge_start(
     if merge_head_path(repo).exists() {
         return Err(EgError::ConflictState {
             state: "上一次合并尚未完成，请先解决冲突或中止".into(),
+            detail: None,
         });
     }
     ensure_clean(repo)?;
@@ -462,6 +463,7 @@ pub fn revert_commits(
             let _ = repo.reset(original_head.as_object(), ResetType::Hard, None);
             return Err(EgError::ConflictState {
                 state: format!("回滚产生冲突，已整体还原：{}", hex),
+                detail: None,
             });
         }
         // Land the merged result: on-disk index + workdir sync.

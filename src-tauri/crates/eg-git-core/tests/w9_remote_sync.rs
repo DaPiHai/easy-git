@@ -257,7 +257,7 @@ fn pull_ff_and_divergence() {
     let err = remote::pull_integrate(&mut repo, "r1", "origin", "main", SyncStrategy::FfOnly)
         .unwrap_err();
     assert!(
-        matches!(&err, eg_types::EgError::ConflictState { state } if state.contains("分叉")),
+        matches!(&err, eg_types::EgError::ConflictState { state, .. } if state.contains("分叉")),
         "expected divergence error, got {err:?}"
     );
 

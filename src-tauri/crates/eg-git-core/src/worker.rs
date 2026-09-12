@@ -1144,8 +1144,9 @@ impl RepoManager {
     /// Opens the repository at `path` (searching upwards like git), or returns
     /// the summary of the already-open worker for the same canonical path.
     pub fn open(&self, path: &Path, on_change: ChangeSink) -> Result<RepoSummary, EgError> {
-        let canonical = path.canonicalize().map_err(|_| EgError::RepoNotFound {
+        let canonical = path.canonicalize().map_err(|e| EgError::RepoNotFound {
             path: path.display().to_string(),
+            detail: Some(e.to_string()),
         })?;
 
         if let Some(existing) = self.find_by_path(&canonical) {
@@ -1188,6 +1189,7 @@ impl RepoManager {
             .cloned()
             .ok_or_else(|| EgError::RepoNotFound {
                 path: repo_id.to_string(),
+                detail: None,
             })
     }
 
