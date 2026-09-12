@@ -24,6 +24,9 @@ pub enum EgError {
     UnsafeOperation { confirm_required: String },
     /// Feature exists in the model but is not implemented yet.
     NotSupported { feature: String },
+    /// The `git` executable is not available on PATH (PRD §7: EasyGit never
+    /// bundles git; the UI guides the user through installing it instead).
+    GitMissing,
     /// A long task was cancelled by the user.
     Cancelled,
     /// Anything unexpected; `context` lands in the local log file.
@@ -42,6 +45,7 @@ impl EgError {
             EgError::ConflictState { .. } => "conflict_state",
             EgError::UnsafeOperation { .. } => "unsafe_operation",
             EgError::NotSupported { .. } => "not_supported",
+            EgError::GitMissing => "git_missing",
             EgError::Cancelled => "cancelled",
             EgError::Internal { .. } => "internal",
         }

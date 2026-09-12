@@ -5,6 +5,7 @@ pub mod commit;
 pub mod config;
 pub mod conflicts;
 pub mod diff;
+pub mod env;
 pub mod log;
 pub mod merge;
 pub mod ops;

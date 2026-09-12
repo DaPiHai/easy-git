@@ -25,6 +25,13 @@ describe('humanizeEgError', () => {
     expect(result.hint).toBeUndefined();
   });
 
+  it('maps git_missing to the install guidance', () => {
+    const result = humanizeEgError({ code: 'git_missing' });
+    expect(result.title).toBe('未检测到 Git');
+    expect(result.detail).toContain('2.30');
+    expect(result.hint?.action).toBe('open-git-download');
+  });
+
   it('degrades unknown codes to the generic fallback', () => {
     const result = humanizeEgError({ code: 'some_future_code' });
     expect(result.title).toBe('出了点问题');

@@ -13,6 +13,15 @@ pub struct AppVersion {
     pub os: String,
 }
 
+/// Environment probe result (PRD §7: detect system git ≥ 2.30, guide the
+/// install when missing). `git_version` is `None` when no usable `git`
+/// answers on PATH.
+#[derive(Debug, Clone, Serialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct EnvStatus {
+    pub git_version: Option<String>,
+}
+
 /// Opaque per-open-repository identifier issued by the RepoManager.
 pub type RepoId = String;
 

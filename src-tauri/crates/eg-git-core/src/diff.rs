@@ -465,9 +465,7 @@ fn apply_to_index(repo: &Repository, patch: &str) -> Result<(), EgError> {
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .spawn()
-        .map_err(|e| EgError::Internal {
-            context: format!("git apply spawn failed: {e}"),
-        })?;
+        .map_err(|e| crate::process::classify_spawn_error("git", &e))?;
     if let Some(mut stdin) = child.stdin.take() {
         let _ = stdin.write_all(patch.as_bytes());
     }

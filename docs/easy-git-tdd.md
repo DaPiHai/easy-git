@@ -100,7 +100,7 @@ git2 `Repository` 非 `Sync`，且多数操作互斥。采用 **RepoWorker**：�
 | 远程 | fetch/pull/push（进度、浅获取选项）、remote CRUD、凭据回调 | git2 传输 + keyring 凭据 |
 | 引用 | reflog 读取、update-ref（安全引擎内部） | git2 |
 
-CLI 桥统一约束：`tokio::process`、环境变量固定（`GIT_TERMINAL_PROMPT=0`）、超时与取消、`--porcelain`/`--json` 输出解析、进度 stderr 解析（`GIT_TRACE` 不开启）、**所有控制台子进程一律经 `eg_git_core::process::hidden_command` 创建**（Windows 传 `CREATE_NO_WINDOW`；release 下应用是 GUI 子系统、自身无控制台，裸 spawn 会让 Windows 给 git 子进程新建可见控制台，表现为每次 git 操作与空闲 `gc` 都闪一个空白 cmd 窗口；隐藏控制台会被 askpass 等后代继承，故不用 `DETACHED_PROCESS`）。
+CLI 桥统一约束：`tokio::process`、环境变量固定（`GIT_TERMINAL_PROMPT=0`）、超时与取消、`--porcelain`/`--json` 输出解析、进度 stderr 解析（`GIT_TRACE` 不开启）、**所有控制台子进程一律经 `eg_git_core::process::hidden_command` 创建**（Windows 传 `CREATE_NO_WINDOW`；release 下应用是 GUI 子系统、自身无控制台，裸 spawn 会让 Windows 给 git 子进程新建可见控制台，表现为每次 git 操作与空闲 `gc` 都闪一个空白 cmd 窗口；隐藏控制台会被 askpass 等后代继承，故不用 `DETACHED_PROCESS`）；spawn 报 `NotFound` 一律经 `classify_spawn_error` 映射为 `git_missing` 错误码（不落 `internal`）；启动时经 `env_check` 命令探测系统 git 版本（`eg_git_core::env`，PRD §7：≥ 2.30，缺失/过旧由前端引导页接管）。
 
 ### 4.3 eg-safety：安全引擎（PRD §4.4 落地）
 

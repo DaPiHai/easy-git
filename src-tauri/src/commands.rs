@@ -6,9 +6,9 @@ use eg_git_core::RepoManager;
 use eg_safety::Safety;
 use eg_types::{
     AppVersion, BranchInfo, CommitDetail, CommitOutcome, CommitRequest, ConfigScope, ConflictFile,
-    DiffRequest, DiffResponse, EgError, IgnoreMode, LogFilter, LogPage, MergeOutcome, MergeState,
-    RemoteInfo, RepoSummary, ResetMode, ResetOutcome, StageLinesRequest, StageMode, StashEntry,
-    StatusReport, SyncStrategy, TagInfo, TimelineEntry, UndoRedoState,
+    DiffRequest, DiffResponse, EgError, EnvStatus, IgnoreMode, LogFilter, LogPage, MergeOutcome,
+    MergeState, RemoteInfo, RepoSummary, ResetMode, ResetOutcome, StageLinesRequest, StageMode,
+    StashEntry, StatusReport, SyncStrategy, TagInfo, TimelineEntry, UndoRedoState,
 };
 use tauri::{AppHandle, State};
 use tauri_specta::Event;
@@ -24,6 +24,16 @@ pub fn app_version() -> Result<AppVersion, EgError> {
         tauri_version: tauri::VERSION.to_string(),
         os: std::env::consts::OS.to_string(),
     })
+}
+
+/// Startup environment probe (PRD §7: 检测系统 git ≥ 2.30，缺失时引导安装).
+/// `git_version` is None when no usable git answers on PATH; the frontend
+/// guides the user through installing git instead of failing later with raw
+/// spawn errors.
+#[tauri::command]
+#[specta::specta]
+pub fn env_check() -> Result<EnvStatus, EgError> {
+    Ok(eg_git_core::env::env_status())
 }
 
 fn change_sink(app: &AppHandle) -> ChangeSink {

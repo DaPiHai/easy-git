@@ -15,6 +15,7 @@ export type EgErrorCode =
   | 'conflict_state'
   | 'unsafe_operation'
   | 'not_supported'
+  | 'git_missing'
   | 'cancelled'
   | 'internal';
 
@@ -82,6 +83,12 @@ const templates: Record<EgErrorCode, ErrorTemplate> = {
   not_supported: {
     title: '该功能尚未支持',
     detail: (p) => `${String(p.feature ?? '此功能')} 在当前版本暂不可用`,
+  },
+  git_missing: {
+    title: '未检测到 Git',
+    detail: () =>
+      'EasyGit 需要系统安装 Git（2.30 或更高版本）才能完成该操作；安装完成后请重启 EasyGit',
+    hint: { action: 'open-git-download', label: '打开 Git 下载页' },
   },
   cancelled: {
     title: '操作已取消',

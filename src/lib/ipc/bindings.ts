@@ -10,6 +10,13 @@ export const commands = {
 	/**  Sample command proving the tauri-specta pipeline end to end (F-01). */
 	appVersion: () => typedError<AppVersion, EgError>(__TAURI_INVOKE("app_version")),
 	/**
+	 *  Startup environment probe (PRD §7: 检测系统 git ≥ 2.30，缺失时引导安装).
+	 *  `git_version` is None when no usable git answers on PATH; the frontend
+	 *  guides the user through installing git instead of failing later with raw
+	 *  spawn errors.
+	 */
+	envCheck: () => typedError<EnvStatus, EgError>(__TAURI_INVOKE("env_check")),
+	/**
 	 *  Opens (or focuses) the repository at `path` and starts its fs-watch worker
 	 *  (m1-plan R-01/R-03).
 	 */
@@ -384,10 +391,24 @@ export type EgError =
 { code: "unsafe_operation"; confirm_required: string } | 
 /**  Feature exists in the model but is not implemented yet. */
 { code: "not_supported"; feature: string } | 
+/**
+ *  The `git` executable is not available on PATH (PRD §7: EasyGit never
+ *  bundles git; the UI guides the user through installing it instead).
+ */
+{ code: "git_missing" } | 
 /**  A long task was cancelled by the user. */
 { code: "cancelled" } | 
 /**  Anything unexpected; `context` lands in the local log file. */
 { code: "internal"; context: string };
+
+/**
+ *  Environment probe result (PRD §7: detect system git ≥ 2.30, guide the
+ *  install when missing). `git_version` is `None` when no usable `git`
+ *  answers on PATH.
+ */
+export type EnvStatus = {
+	gitVersion: string | null,
+};
 
 /**
  *  Graph geometry for one history row (m1-plan R-10). Lanes are pre-computed

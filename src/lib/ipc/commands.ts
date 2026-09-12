@@ -19,6 +19,7 @@ import {
   type DiffResponse,
   type DiscardOutcome,
   type EgError,
+  type EnvStatus,
   type IgnoreMode,
   type LogFilter,
   type LogPage,
@@ -58,6 +59,7 @@ export type {
   DiffResponse,
   DiscardOutcome,
   EgError,
+  EnvStatus,
   IgnoreMode,
   LogFilter,
   LogPage,
@@ -164,6 +166,16 @@ async function tracked<T>(name: string, run: () => Promise<T>): Promise<T> {
 export async function getAppVersion(): Promise<AppVersion | null> {
   if (!isTauriAvailable()) return null;
   const result: CommandResult<AppVersion, EgError> = await commands.appVersion();
+  return result.status === 'ok' ? result.data : null;
+}
+
+/**
+ * Environment probe (PRD §7): system git version, null when unavailable.
+ * Returns null outside the Tauri shell so the browser preview never gates.
+ */
+export async function getEnvStatus(): Promise<EnvStatus | null> {
+  if (!isTauriAvailable()) return null;
+  const result = await commands.envCheck();
   return result.status === 'ok' ? result.data : null;
 }
 

@@ -11,6 +11,7 @@ fn main() {
     let builder = Builder::<tauri::Wry>::new()
         .commands(collect_commands![
             easy_git::commands::app_version,
+            easy_git::commands::env_check,
             easy_git::commands::repo_open,
             easy_git::commands::repo_init,
             easy_git::commands::repo_close,
