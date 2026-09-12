@@ -31,8 +31,10 @@ pub fn hidden_command(program: &str) -> std::process::Command {
 /// dedicated `git_missing` guidance instead of a raw `internal` error.
 pub fn classify_spawn_error(program: &str, error: &std::io::Error) -> eg_types::EgError {
     if error.kind() == std::io::ErrorKind::NotFound {
+        tracing::error!(program, "git executable not found on PATH");
         eg_types::EgError::GitMissing
     } else {
+        tracing::error!(program, error = %error, "spawn failed");
         eg_types::EgError::Internal {
             context: format!("{program} spawn failed: {error}"),
         }

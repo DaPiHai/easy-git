@@ -53,7 +53,12 @@ pub fn repo_open(
     manager: State<'_, RepoManager>,
     path: String,
 ) -> Result<RepoSummary, EgError> {
-    manager.open(Path::new(&path), change_sink(&app))
+    let summary = manager.open(Path::new(&path), change_sink(&app));
+    match &summary {
+        Ok(s) => tracing::info!(repo = %s.repo_id, path = %path, branch = ?s.branch, "repo opened"),
+        Err(e) => tracing::warn!(path = %path, error = ?e, "repo open failed"),
+    }
+    summary
 }
 
 /// `git init` at `path`; opening an existing repository is idempotent
@@ -67,7 +72,12 @@ pub fn repo_init(
 ) -> Result<RepoSummary, EgError> {
     let target = Path::new(&path);
     eg_git_core::repo::init(target)?;
-    manager.open(target, change_sink(&app))
+    let summary = manager.open(target, change_sink(&app));
+    match &summary {
+        Ok(s) => tracing::info!(repo = %s.repo_id, path = %path, "repo initialized"),
+        Err(e) => tracing::warn!(path = %path, error = ?e, "repo open after init failed"),
+    }
+    summary
 }
 
 /// Closes the repository worker and stops watching its worktree.
@@ -75,6 +85,7 @@ pub fn repo_init(
 #[specta::specta]
 pub fn repo_close(manager: State<'_, RepoManager>, repo_id: String) -> Result<(), EgError> {
     manager.close(&repo_id);
+    tracing::info!(repo = %repo_id, "repo closed");
     Ok(())
 }
 
@@ -668,13 +679,29 @@ pub async fn repo_clone(
 ) -> Result<RepoSummary, EgError> {
     let (tx, join) = sync_progress_sink(&app, "clone".to_string(), "clone");
     let clone_path = path.clone();
+    let clone_url = url.clone();
     let result = run_blocking(move || {
-        eg_git_core::remote::clone_repo(&url, std::path::Path::new(&clone_path), Some(&tx))
+        eg_git_core::remote::clone_repo(&clone_url, std::path::Path::new(&clone_path), Some(&tx))
     })
     .await;
     finish_progress_sink(&app, "clone".to_string(), "clone", join, result.is_ok()).await;
+    match &result {
+        Ok(()) => {
+            tracing::info!(url = %eg_types::sensitive::redact_url(&url), path = %path, "clone finished")
+        }
+        Err(e) => tracing::warn!(
+            url = %eg_types::sensitive::redact_url(&url),
+            path = %path,
+            error = ?e,
+            "clone failed"
+        ),
+    }
     result?;
-    manager.open(std::path::Path::new(&path), change_sink(&app))
+    let summary = manager.open(std::path::Path::new(&path), change_sink(&app));
+    if let Ok(s) = &summary {
+        tracing::info!(repo = %s.repo_id, path = %path, "cloned repo opened");
+    }
+    summary
 }
 
 #[tauri::command]

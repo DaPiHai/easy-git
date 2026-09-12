@@ -3,6 +3,7 @@
 //! tauri-specta.
 
 pub mod error;
+pub mod sensitive;
 
 pub use error::EgError;
 

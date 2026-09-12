@@ -50,6 +50,21 @@ impl EgError {
             EgError::Internal { .. } => "internal",
         }
     }
+
+    /// True when the error is UI control flow rather than a malfunction
+    /// (worktree guards, confirmations, mid-merge states, user cancellation).
+    /// The logging layer keeps these off error level so real failures stay
+    /// visible in the file sink.
+    pub fn is_expected(&self) -> bool {
+        matches!(
+            self,
+            EgError::DirtyWorktree { .. }
+                | EgError::ConflictState { .. }
+                | EgError::UnsafeOperation { .. }
+                | EgError::NotSupported { .. }
+                | EgError::Cancelled
+        )
+    }
 }
 
 impl std::fmt::Display for EgError {

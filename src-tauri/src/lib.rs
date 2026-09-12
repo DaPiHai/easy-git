@@ -1,24 +1,32 @@
 pub mod commands;
 pub mod events;
+pub mod logs;
 
 use eg_git_core::RepoManager;
 use eg_safety::Safety;
 use specta_typescript::Typescript;
 use tauri::{Manager, RunEvent};
 use tauri_specta::{collect_commands, collect_events, Builder, ErrorHandlingMode};
+use tracing_subscriber::prelude::*;
+
+/// Panics land in the same local log file as everything else (PRD §7: 崩溃
+/// 日志本地存储), then the default hook still prints to stderr.
+fn install_panic_hook() {
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let location = info
+            .location()
+            .map(|l| l.to_string())
+            .unwrap_or_else(|| "unknown".into());
+        tracing::error!(target: "panic", location, "{info}");
+        previous(info);
+    }));
+}
 
 /// App entry point. The Tauri window, the IPC command registry and the
 /// tauri-specta type pipeline are wired here.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Local-only logging (TDD §7): no telemetry, file sink arrives with W2.
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .init();
-
     let builder = Builder::<tauri::Wry>::new()
         .commands(collect_commands![
             commands::app_version,
@@ -98,8 +106,35 @@ pub fn run() {
         .manage(RepoManager::default())
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {
-            // Safety operation log lives under the app data dir (TDD §4.3).
+            // Local-only logging (TDD §7): stderr layer for dev consoles plus
+            // a daily-rolling file under <app-data>/logs — the release GUI
+            // binary has no console, so the file sink is the durable one.
+            // `RUST_LOG` still overrides the default `info` filter.
             let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+            let log_dir = logs::logs_dir(&app_data);
+            std::fs::create_dir_all(&log_dir).map_err(|e| e.to_string())?;
+            logs::cleanup_old_logs(&log_dir, logs::RETENTION_DAYS);
+            let (file_writer, guard) = tracing_appender::non_blocking(
+                tracing_appender::rolling::daily(&log_dir, logs::LOG_FILE_PREFIX),
+            );
+            tracing_subscriber::registry()
+                .with(
+                    tracing_subscriber::EnvFilter::try_from_default_env()
+                        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+                )
+                .with(tracing_subscriber::fmt::layer().with_ansi(true))
+                .with(
+                    tracing_subscriber::fmt::layer()
+                        .with_ansi(false)
+                        .with_writer(file_writer),
+                )
+                .init();
+            // Keep the background writer thread alive for the whole process.
+            app.manage(guard);
+            install_panic_hook();
+            tracing::info!(version = env!("CARGO_PKG_VERSION"), "app starting");
+
+            // Safety operation log lives under the app data dir (TDD §4.3).
             app.manage(Safety::new(&app_data));
             builder.mount_events(app);
             Ok(())

@@ -20,6 +20,7 @@ serde_json = "1"
 specta = { version = "=2.0.0-rc.25", features = ["derive"] }
 thiserror = "2"
 tempfile = "3"
+tracing = "0.1"
 
 [package]
 name = "easy-git"
@@ -61,10 +62,12 @@ serde_json.workspace = true
 specta.workspace = true
 tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
 specta-typescript = "0.0.12"
-tracing = "0.1"
+tracing.workspace = true
+tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tauri-plugin-opener = "2"
 
 [dev-dependencies]
 # `cargo test` never launches the GUI; tauri::test keeps the lib testable later.
 tauri = { version = "2", features = ["test"] }
+tempfile.workspace = true

@@ -239,6 +239,63 @@ enum RepoCommand {
     Close(Sender<()>),
 }
 
+impl RepoCommand {
+    /// Short name for the per-command log line (the enum itself can't derive
+    /// Debug: the reply channels are not).
+    fn label(&self) -> &'static str {
+        match self {
+            RepoCommand::Status(_) => "status",
+            RepoCommand::Summary(_) => "summary",
+            RepoCommand::Stage { .. } => "stage",
+            RepoCommand::Discard { .. } => "discard",
+            RepoCommand::CleanPreview { .. } => "clean_preview",
+            RepoCommand::CleanExecute { .. } => "clean_execute",
+            RepoCommand::Ignore { .. } => "ignore",
+            RepoCommand::Undo { .. } => "undo",
+            RepoCommand::Commit { .. } => "commit",
+            RepoCommand::ConfigGet { .. } => "config_get",
+            RepoCommand::ConfigSet { .. } => "config_set",
+            RepoCommand::LogPage { .. } => "log_page",
+            RepoCommand::CommitDetail { .. } => "commit_detail",
+            RepoCommand::ListBranches { .. } => "list_branches",
+            RepoCommand::DiffFile { .. } => "diff_file",
+            RepoCommand::StageLines { .. } => "stage_lines",
+            RepoCommand::BranchList { .. } => "branch_list",
+            RepoCommand::BranchCreate { .. } => "branch_create",
+            RepoCommand::BranchRename { .. } => "branch_rename",
+            RepoCommand::BranchDelete { .. } => "branch_delete",
+            RepoCommand::BranchSwitch { .. } => "branch_switch",
+            RepoCommand::TagList { .. } => "tag_list",
+            RepoCommand::TagCreate { .. } => "tag_create",
+            RepoCommand::TagDelete { .. } => "tag_delete",
+            RepoCommand::StashList { .. } => "stash_list",
+            RepoCommand::StashPush { .. } => "stash_push",
+            RepoCommand::StashApply { .. } => "stash_apply",
+            RepoCommand::StashDrop { .. } => "stash_drop",
+            RepoCommand::MergeStart { .. } => "merge_start",
+            RepoCommand::MergeState { .. } => "merge_state",
+            RepoCommand::MergeAbort { .. } => "merge_abort",
+            RepoCommand::ConflictsGet { .. } => "conflicts_get",
+            RepoCommand::ConflictResolve { .. } => "conflict_resolve",
+            RepoCommand::Revert { .. } => "revert",
+            RepoCommand::ResetCmd { .. } => "reset",
+            RepoCommand::RemoteList { .. } => "remote_list",
+            RepoCommand::RemoteAdd { .. } => "remote_add",
+            RepoCommand::RemoteRename { .. } => "remote_rename",
+            RepoCommand::RemoteRemove { .. } => "remote_remove",
+            RepoCommand::RemoteSetUrl { .. } => "remote_set_url",
+            RepoCommand::PullIntegrate { .. } => "pull",
+            RepoCommand::Redo { .. } => "redo",
+            RepoCommand::Timeline { .. } => "timeline",
+            RepoCommand::RestoreTo { .. } => "restore_to",
+            RepoCommand::BranchSetUpstream { .. } => "branch_set_upstream",
+            RepoCommand::UndoState { .. } => "undo_state",
+            RepoCommand::RemoteBranchList { .. } => "remote_branch_list",
+            RepoCommand::Close(_) => "close",
+        }
+    }
+}
+
 /// Discard result: the fresh status plus the op id for the 撤销 toast.
 #[derive(Debug, Clone, serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
@@ -609,12 +666,39 @@ impl WorkerHandle {
         make: impl FnOnce(Sender<Result<T, EgError>>) -> RepoCommand,
     ) -> Result<T, EgError> {
         let (tx, rx) = channel();
-        self.tx.send(make(tx)).map_err(|_| worker_gone())?;
+        if self.tx.send(make(tx)).is_err() {
+            tracing::error!(repo = %self.repo_id, "repo worker stopped");
+            return Err(worker_gone());
+        }
         match rx.recv_timeout(REQUEST_TIMEOUT) {
-            Ok(result) => result,
-            Err(_) => Err(EgError::Internal {
-                context: "repo worker request timed out".into(),
-            }),
+            Ok(result) => {
+                if let Err(error) = &result {
+                    // Guards (dirty worktree, confirmations, mid-merge) are UI
+                    // control flow, not malfunctions — keep them off error level.
+                    if error.is_expected() {
+                        tracing::debug!(
+                            repo = %self.repo_id,
+                            code = error.code(),
+                            error = ?error,
+                            "repo command refused"
+                        );
+                    } else {
+                        tracing::error!(
+                            repo = %self.repo_id,
+                            code = error.code(),
+                            error = ?error,
+                            "repo command failed"
+                        );
+                    }
+                }
+                result
+            }
+            Err(_) => {
+                tracing::error!(repo = %self.repo_id, "repo worker request timed out");
+                Err(EgError::Internal {
+                    context: "repo worker request timed out".into(),
+                })
+            }
         }
     }
 
@@ -722,7 +806,7 @@ fn run_loop(
         // no pending user work and no command traffic for the idle window.
         if dirty.is_none() && last_activity.elapsed() >= MAINTENANCE_IDLE {
             if let Err(e) = crate::remote::GitCli::for_path(&workdir).maintenance() {
-                eprintln!("[eg] idle maintenance skipped: {e}");
+                tracing::warn!(repo = %repo_id, error = ?e, "idle maintenance skipped");
             }
             last_activity = Instant::now();
         }
@@ -736,6 +820,10 @@ fn run_loop(
         if received.is_ok() {
             last_activity = Instant::now();
         }
+        // Per-command audit line (debug): one site covers the whole dispatch
+        // without instrumenting every arm.
+        let started = Instant::now();
+        let command_label = received.as_ref().ok().map(RepoCommand::label);
         match received {
             Ok(RepoCommand::Status(tx)) => {
                 let _ = tx.send(status::status(&repo_id, &repo));
@@ -1026,6 +1114,14 @@ fn run_loop(
             Err(RecvTimeoutError::Timeout) => continue,
             // All handles dropped: shut down.
             Err(RecvTimeoutError::Disconnected) => break,
+        }
+        if let Some(label) = command_label {
+            tracing::debug!(
+                repo = %repo_id,
+                command = label,
+                elapsed_ms = started.elapsed().as_millis() as u64,
+                "repo command finished"
+            );
         }
     }
 }

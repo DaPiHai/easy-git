@@ -255,6 +255,10 @@ impl GitCli {
         });
 
         let started = std::time::Instant::now();
+        tracing::debug!(
+            command = %eg_types::sensitive::redact_text(&args.join(" ")),
+            "git command started"
+        );
         let status = loop {
             match child.try_wait() {
                 Ok(Some(status)) => break status,
@@ -265,6 +269,11 @@ impl GitCli {
                         let text = reader
                             .map(|h| h.join().unwrap_or_default())
                             .unwrap_or_default();
+                        tracing::error!(
+                            command = %eg_types::sensitive::redact_text(&args.join(" ")),
+                            timeout_secs = timeout.as_secs(),
+                            "git command timed out and was killed"
+                        );
                         return Err(EgError::Internal {
                             context: format!(
                                 "git {} timed out (exceeded {} seconds), the process has been terminated\n{text}",
@@ -297,6 +306,17 @@ impl GitCli {
             }
             text.push_str(line);
             text.push('\n');
+        }
+        let elapsed_ms = started.elapsed().as_millis() as u64;
+        if status.success() {
+            tracing::debug!(command = %args.first().unwrap_or(&"git"), elapsed_ms, "git command finished");
+        } else {
+            tracing::warn!(
+                command = %eg_types::sensitive::redact_text(&args.join(" ")),
+                elapsed_ms,
+                tail = %stderr_tail(&text, 3),
+                "git command exited with failure"
+            );
         }
         Ok((text, status.success()))
     }
@@ -486,6 +506,10 @@ fn humanize_network(stderr: &str) -> EgError {
         .rev()
         .collect::<Vec<_>>()
         .join("\n");
+    tracing::error!(
+        tail = %eg_types::sensitive::redact_text(&tail),
+        "network command failed"
+    );
     let lower = stderr.to_lowercase();
     if lower.contains("authentication")
         || lower.contains("403")
@@ -518,6 +542,22 @@ fn humanize_network(stderr: &str) -> EgError {
     EgError::Internal {
         context: format!("network command failed: {tail}"),
     }
+}
+
+/// Last `n` lines joined for a compact single-line log entry, credentials
+/// redacted (TDD §7).
+fn stderr_tail(text: &str, n: usize) -> String {
+    eg_types::sensitive::redact_text(
+        &text
+            .lines()
+            .rev()
+            .take(n)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>()
+            .join(" | "),
+    )
 }
 
 /// Extracts "Receiving objects: 45% (90/200)" style percentages for the strip.
