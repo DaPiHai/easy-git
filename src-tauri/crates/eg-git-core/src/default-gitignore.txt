@@ -1,0 +1,39 @@
+# EasyGit 通用忽略模板：按需增删条目，详情见 https://git-scm.com/docs/gitignore
+
+# 系统文件
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# 编辑器 / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 日志与临时文件
+*.log
+logs/
+tmp/
+
+# Node / 前端
+node_modules/
+dist/
+coverage/
+
+# Rust
+target/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Java
+*.class
+build/
+.gradle/
+
+# 环境变量文件（可能含密钥，勿提交）
+.env
+.env.local

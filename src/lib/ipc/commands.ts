@@ -118,6 +118,7 @@ const BUSY_LABELS: Partial<Record<string, MessageKey>> = {
   discardChanges: 'busy.discard',
   cleanExecute: 'busy.clean',
   ignorePaths: 'busy.ignore',
+  writeGitignoreTemplate: 'busy.ignore',
   undoOperation: 'busy.undo',
   redoOperation: 'busy.redo',
   restoreTo: 'busy.restore',
@@ -240,6 +241,20 @@ export async function ignorePaths(
   mode: IgnoreMode,
 ): Promise<StatusReport> {
   const result = await tracked('ignorePaths', () => commands.ignorePaths(repoId, paths, mode));
+  if (result.status === 'error') throw result.error;
+  return result.data;
+}
+
+/** True when the repository workdir has no `.gitignore` (lightweight read). */
+export async function gitignoreMissing(repoId: string): Promise<boolean> {
+  const result = await commands.gitignoreMissing(repoId);
+  if (result.status === 'error') throw result.error;
+  return result.data;
+}
+
+/** Writes the generic template when absent; returns whether it was created. */
+export async function writeGitignoreTemplate(repoId: string): Promise<boolean> {
+  const result = await tracked('writeGitignoreTemplate', () => commands.gitignoreWrite(repoId));
   if (result.status === 'error') throw result.error;
   return result.data;
 }

@@ -59,6 +59,12 @@ enum RepoCommand {
         mode: IgnoreMode,
         reply: Sender<Result<StatusReport, EgError>>,
     },
+    GitignoreMissing {
+        reply: Sender<Result<bool, EgError>>,
+    },
+    GitignoreWriteTemplate {
+        reply: Sender<Result<bool, EgError>>,
+    },
     Undo {
         op_id: String,
         safety: Arc<eg_safety::Safety>,
@@ -251,6 +257,8 @@ impl RepoCommand {
             RepoCommand::CleanPreview { .. } => "clean_preview",
             RepoCommand::CleanExecute { .. } => "clean_execute",
             RepoCommand::Ignore { .. } => "ignore",
+            RepoCommand::GitignoreMissing { .. } => "gitignore_missing",
+            RepoCommand::GitignoreWriteTemplate { .. } => "gitignore_write_template",
             RepoCommand::Undo { .. } => "undo",
             RepoCommand::Commit { .. } => "commit",
             RepoCommand::ConfigGet { .. } => "config_get",
@@ -361,6 +369,16 @@ impl WorkerHandle {
 
     pub fn ignore(&self, paths: Vec<String>, mode: IgnoreMode) -> Result<StatusReport, EgError> {
         self.request(|reply| RepoCommand::Ignore { paths, mode, reply })
+    }
+
+    /// True when the workdir has no `.gitignore` (创建/打开仓库时的提醒依据).
+    pub fn gitignore_missing(&self) -> Result<bool, EgError> {
+        self.request(|reply| RepoCommand::GitignoreMissing { reply })
+    }
+
+    /// Writes the generic template if absent; returns whether it was created.
+    pub fn gitignore_write_template(&self) -> Result<bool, EgError> {
+        self.request(|reply| RepoCommand::GitignoreWriteTemplate { reply })
     }
 
     pub fn undo(
@@ -875,6 +893,12 @@ fn run_loop(
                     ops::ignore(&repo, &paths, mode)
                         .and_then(|_added| status::status(&repo_id, &repo)),
                 );
+            }
+            Ok(RepoCommand::GitignoreMissing { reply }) => {
+                let _ = reply.send(ops::gitignore_missing(&repo));
+            }
+            Ok(RepoCommand::GitignoreWriteTemplate { reply }) => {
+                let _ = reply.send(ops::write_default_gitignore(&repo));
             }
             Ok(RepoCommand::Undo {
                 op_id,

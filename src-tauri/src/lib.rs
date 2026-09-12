@@ -40,6 +40,8 @@ pub fn run() {
             commands::clean_preview,
             commands::clean_execute,
             commands::ignore_paths,
+            commands::gitignore_missing,
+            commands::gitignore_write,
             commands::undo_operation,
             commands::commit,
             commands::config_get,

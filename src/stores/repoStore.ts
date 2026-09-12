@@ -7,6 +7,7 @@ import {
   discardChanges,
   formatIpcError,
   getConfig,
+  gitignoreMissing,
   getStatus,
   ignorePaths as ignorePathsIpc,
   initRepo,
@@ -28,6 +29,7 @@ import {
   type StatusReport,
 } from '../lib/ipc/commands';
 import type { RepoChanged } from '../lib/ipc/bindings';
+import { useGitignorePrompt } from './gitignoreStore';
 import { useMergeStore } from './mergeStore';
 import type { ChangeEntry } from '../lib/ipc/commands';
 import { useLensStore } from './lensStore';
@@ -64,6 +66,20 @@ function toMeta(summary: RepoSummary): RepoMeta {
 
 function humanize(error: unknown): HumanizedError {
   return formatIpcError(error as EgErrorLike);
+}
+
+/**
+ * Offers the generic .gitignore prompt once per fresh open (F-06): repos
+ * already in the session (manager dedupe) are not re-prompted. Best-effort —
+ * a failing probe never blocks the open flow.
+ */
+function maybeOfferGitignore(summary: RepoSummary): void {
+  if (useRepoStore.getState().repos[summary.repoId]) return;
+  void gitignoreMissing(summary.repoId)
+    .then((missing) => {
+      if (missing) useGitignorePrompt.getState().offer(summary.repoId, summary.name);
+    })
+    .catch(() => undefined);
 }
 
 /** Shell-quotes a path for the command lens (F-13). */
@@ -213,6 +229,7 @@ export const useRepoStore = create<RepoState>()((set, get) => {
       set({ error: null });
       try {
         const summary = await openRepoIpc(path);
+        maybeOfferGitignore(summary);
         set((s) => ({ repos: { ...s.repos, [summary.repoId]: summary } }));
         putRecent(summary);
         await get().activate(summary.repoId);
@@ -225,6 +242,7 @@ export const useRepoStore = create<RepoState>()((set, get) => {
       set({ error: null });
       try {
         const summary = await initRepo(path);
+        maybeOfferGitignore(summary);
         set((s) => ({ repos: { ...s.repos, [summary.repoId]: summary } }));
         putRecent(summary);
         await get().activate(summary.repoId);

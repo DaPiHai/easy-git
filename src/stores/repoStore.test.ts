@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useRepoStore } from './repoStore';
+import { useGitignorePrompt } from './gitignoreStore';
+
+const gitignoreMissingMock = vi.fn(async (_repoId: string) => false);
 
 const getStatusMock = vi.fn(async (_repoId: string) => ({
   repoId: 'r1',
@@ -38,6 +41,7 @@ vi.mock('../lib/ipc/commands', () => ({
   initRepo: (path: string) => initRepoMock(path),
   closeRepo: (repoId: string) => closeRepoMock(repoId),
   getStatus: (repoId: string) => getStatusMock(repoId),
+  gitignoreMissing: (repoId: string) => gitignoreMissingMock(repoId),
   pickDirectory: vi.fn(async () => null),
   formatIpcError: (e: unknown) => ({ title: '找不到仓库', detail: String(e) }),
   events: {
@@ -49,6 +53,8 @@ vi.mock('../lib/ipc/commands', () => ({
 beforeEach(() => {
   localStorage.clear();
   vi.clearAllMocks();
+  gitignoreMissingMock.mockResolvedValue(false);
+  useGitignorePrompt.setState({ target: null });
   useRepoStore.getState().seed({
     repos: {},
     activeId: null,
@@ -77,6 +83,24 @@ describe('repoStore.openByPath', () => {
 
     expect(useRepoStore.getState().activeId).toBeNull();
     expect(useRepoStore.getState().error?.title).toBe('找不到仓库');
+  });
+
+  it('offers the gitignore prompt when a fresh open lacks .gitignore', async () => {
+    gitignoreMissingMock.mockResolvedValue(true);
+    await useRepoStore.getState().openByPath('/tmp/demo');
+
+    expect(gitignoreMissingMock).toHaveBeenCalledWith('r1');
+    expect(useGitignorePrompt.getState().target).toEqual({ repoId: 'r1', name: 'demo' });
+  });
+
+  it('does not re-prompt when the repo is already open in the session', async () => {
+    gitignoreMissingMock.mockResolvedValue(true);
+    await useRepoStore.getState().openByPath('/tmp/demo');
+    useGitignorePrompt.getState().close();
+
+    // Reopening an already-registered repo (manager dedupe) is not a new open.
+    await useRepoStore.getState().openByPath('/tmp/demo');
+    expect(useGitignorePrompt.getState().target).toBeNull();
   });
 });
 

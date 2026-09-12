@@ -169,6 +169,29 @@ pub async fn ignore_paths(
     run_blocking(move || handle.ignore(paths, mode)).await
 }
 
+/// True when the repository workdir has no `.gitignore` (通用模板提醒依据).
+#[tauri::command]
+#[specta::specta]
+pub async fn gitignore_missing(
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+) -> Result<bool, EgError> {
+    let handle = manager.get(&repo_id)?;
+    run_blocking(move || handle.gitignore_missing()).await
+}
+
+/// Writes the generic .gitignore template when absent; returns whether the
+/// file was created (an existing .gitignore is never touched).
+#[tauri::command]
+#[specta::specta]
+pub async fn gitignore_write(
+    manager: State<'_, RepoManager>,
+    repo_id: String,
+) -> Result<bool, EgError> {
+    let handle = manager.get(&repo_id)?;
+    run_blocking(move || handle.gitignore_write_template()).await
+}
+
 /// Restores the pre-operation content of a discard/clean (m1-plan W3).
 #[tauri::command]
 #[specta::specta]

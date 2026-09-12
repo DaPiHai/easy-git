@@ -209,3 +209,26 @@ fn ignore_writes_rules_and_filters_status() {
     assert_eq!(report.unstaged.len(), 1, "got {report:?}");
     assert_eq!(report.unstaged[0].path, ".gitignore");
 }
+
+#[test]
+fn gitignore_template_missing_and_write_semantics() {
+    let (_dir, repo) = init_repo();
+
+    // Fresh repo without .gitignore: missing=true, write creates the template.
+    assert!(ops::gitignore_missing(&repo).unwrap());
+    assert!(ops::write_default_gitignore(&repo).unwrap());
+    let content = std::fs::read_to_string(repo.workdir().unwrap().join(".gitignore")).unwrap();
+    assert!(content.contains("node_modules/"), "template marker");
+    assert!(content.contains(".DS_Store"), "template marker");
+    assert!(content.contains(".env"), "template marker");
+
+    // An existing .gitignore is never touched: missing=false, write is a no-op.
+    std::fs::write(repo.workdir().unwrap().join(".gitignore"), "custom\n").unwrap();
+    assert!(!ops::gitignore_missing(&repo).unwrap());
+    assert!(!ops::write_default_gitignore(&repo).unwrap());
+    let content = std::fs::read_to_string(repo.workdir().unwrap().join(".gitignore")).unwrap();
+    assert_eq!(
+        content, "custom\n",
+        "existing .gitignore must stay untouched"
+    );
+}

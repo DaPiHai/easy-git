@@ -49,6 +49,13 @@ export const commands = {
 	cleanExecute: (repoId: string, paths: string[]) => typedError<DiscardOutcome, EgError_Serialize>(__TAURI_INVOKE("clean_execute", { repoId, paths })),
 	/**  Appends ignore rules to .gitignore (m1-plan F-10). */
 	ignorePaths: (repoId: string, paths: string[], mode: IgnoreMode) => typedError<StatusReport, EgError_Serialize>(__TAURI_INVOKE("ignore_paths", { repoId, paths, mode })),
+	/**  True when the repository workdir has no `.gitignore` (通用模板提醒依据). */
+	gitignoreMissing: (repoId: string) => typedError<boolean, EgError_Serialize>(__TAURI_INVOKE("gitignore_missing", { repoId })),
+	/**
+	 *  Writes the generic .gitignore template when absent; returns whether the
+	 *  file was created (an existing .gitignore is never touched).
+	 */
+	gitignoreWrite: (repoId: string) => typedError<boolean, EgError_Serialize>(__TAURI_INVOKE("gitignore_write", { repoId })),
 	/**  Restores the pre-operation content of a discard/clean (m1-plan W3). */
 	undoOperation: (repoId: string, opId: string) => typedError<StatusReport, EgError_Serialize>(__TAURI_INVOKE("undo_operation", { repoId, opId })),
 	/**

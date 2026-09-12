@@ -94,6 +94,11 @@ export const zhCN = {
   'dialog.clean.desc': '将从磁盘删除以下未跟踪文件（删除前自动创建快照点，可撤销）：',
   'dialog.clean.confirm': '清理',
   'dialog.cancel': '取消',
+  'dialog.gitignore.title': '创建 .gitignore？',
+  'dialog.gitignore.desc':
+    '「{name}」还没有 .gitignore。可以按通用模板创建一份，忽略系统文件、编辑器目录和常见构建产物；之后可随时编辑。',
+  'dialog.gitignore.confirm': '创建 .gitignore',
+  'dialog.gitignore.skip': '暂不',
   'dialog.confirm': '确定',
 
   'toast.discarded': '已丢弃 {n} 个路径的修改',
@@ -103,6 +108,7 @@ export const zhCN = {
   'toast.staged': '已暂存 {n} 个文件',
   'toast.unstaged': '已取消暂存 {n} 个文件',
   'toast.ignored': '已写入 .gitignore',
+  'toast.gitignoreCreated': '已创建 .gitignore',
 
   'commit.title': '提交',
   'commit.subject.placeholder': '提交摘要（一句话说明这次改动）',

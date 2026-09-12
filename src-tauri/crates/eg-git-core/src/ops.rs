@@ -415,6 +415,32 @@ pub fn ignore(
     Ok(fresh)
 }
 
+/// Generic .gitignore template offered when a repository has none (system
+/// files, editors, logs, common build artifacts, env files; 中文注释).
+pub const DEFAULT_GITIGNORE: &str = include_str!("default-gitignore.txt");
+
+/// True when the workdir has no `.gitignore` (bare repositories: unsupported).
+pub fn gitignore_missing(repo: &Repository) -> Result<bool, EgError> {
+    let workdir = repo.workdir().ok_or_else(|| EgError::NotSupported {
+        feature: "bare repository gitignore".into(),
+    })?;
+    Ok(!workdir.join(".gitignore").exists())
+}
+
+/// Writes the generic template when the workdir has no `.gitignore`.
+/// Returns whether the file was created — an existing file is never touched.
+pub fn write_default_gitignore(repo: &Repository) -> Result<bool, EgError> {
+    let workdir = repo.workdir().ok_or_else(|| EgError::NotSupported {
+        feature: "bare repository gitignore".into(),
+    })?;
+    let gitignore = workdir.join(".gitignore");
+    if gitignore.exists() {
+        return Ok(false);
+    }
+    fs::write(&gitignore, DEFAULT_GITIGNORE).map_err(fs_err("write .gitignore"))?;
+    Ok(true)
+}
+
 fn find_entry(report: &StatusReport, path: &str) -> Option<eg_types::ChangeEntry> {
     let norm = normalize(path);
     report

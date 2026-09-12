@@ -21,6 +21,8 @@ fn main() {
             easy_git::commands::clean_preview,
             easy_git::commands::clean_execute,
             easy_git::commands::ignore_paths,
+            easy_git::commands::gitignore_missing,
+            easy_git::commands::gitignore_write,
             easy_git::commands::undo_operation,
             easy_git::commands::commit,
             easy_git::commands::config_get,
