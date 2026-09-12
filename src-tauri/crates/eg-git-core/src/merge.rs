@@ -226,20 +226,7 @@ pub fn merge_start(
         // merged index from merge_commits is in-memory only and cannot be
         // written directly), then MERGE_HEAD/MERGE_MSG so status/wizard and
         // real git pick the state up.
-        let mut real = repo.index().map_err(err("index"))?;
-        real.clear().map_err(err("index clear"))?;
-        for entry in merged.iter() {
-            real.add(&entry).map_err(err("index add"))?;
-        }
-        real.write().map_err(err("index write"))?;
-        std::fs::write(merge_head_path(repo), format!("{}\n", their_commit.id()))
-            .map_err(io_err("write MERGE_HEAD"))?;
-        std::fs::write(
-            git_dir(repo).join("MERGE_MSG"),
-            format!("Merge branch '{name}'\n"),
-        )
-        .map_err(io_err("write MERGE_MSG"))?;
-        let conflicts: Vec<String> = merged
+        let conflicted: Vec<(String, git2::IndexConflict)> = merged
             .conflicts()
             .map_err(err("conflicts"))?
             .filter_map(|c| c.ok())
@@ -250,39 +237,126 @@ pub fn merge_start(
                     .or(c.their.as_ref())
                     .or(c.ancestor.as_ref())
                     .map(|e| String::from_utf8_lossy(&e.path).replace('\\', "/"))?;
-                write_conflict_workdir(repo, &c, &path, name);
-                Some(path)
+                Some((path, c))
             })
             .collect();
+        let conflict_paths: Vec<String> = conflicted.iter().map(|(p, _)| p.clone()).collect();
+        let mut real = repo.index().map_err(err("index"))?;
+        real.clear().map_err(err("index clear"))?;
+        // Real git checks the whole merged result out into the workdir and
+        // keeps markers only on conflicted paths; do the same for the
+        // non-conflicted merged files (checkout_index applies the usual
+        // filters). The checkout MUST be pathspec-limited to exactly those
+        // files: an unrestricted one treats everything absent from its target
+        // index as removable and would wipe the conflict stages and marker
+        // files we are parking. Files the merge deleted are not in `merged`
+        // anymore, so they are removed from the workdir by hand.
+        let our_tree = our_commit.tree().map_err(err("our tree"))?;
+        let mut staging = git2::Index::new().map_err(err("temp index"))?;
+        let mut sync_paths: Vec<String> = Vec::new();
+        for entry in merged.iter() {
+            real.add(&entry).map_err(err("index add"))?;
+            let path = String::from_utf8_lossy(&entry.path).replace('\\', "/");
+            if conflict_paths.contains(&path) {
+                continue;
+            }
+            staging.add(&entry).map_err(err("temp index add"))?;
+            let changed = match our_tree.get_path(std::path::Path::new(&path)) {
+                Ok(ours) => ours.id() != entry.id,
+                Err(_) => true,
+            };
+            if changed {
+                sync_paths.push(path);
+            }
+        }
+        let workdir = repo.workdir();
+        let mut removed_paths: Vec<String> = Vec::new();
+        our_tree
+            .walk(git2::TreeWalkMode::PreOrder, |dir, entry| {
+                if entry.kind() != Some(git2::ObjectType::Blob) {
+                    return git2::TreeWalkResult::Ok;
+                }
+                let name = match entry.name() {
+                    Ok(name) => name,
+                    Err(_) => return git2::TreeWalkResult::Ok,
+                };
+                let path = if dir.is_empty() {
+                    name.to_string()
+                } else {
+                    format!("{dir}/{name}")
+                };
+                if conflict_paths.iter().any(|p| p == &path) {
+                    return git2::TreeWalkResult::Ok;
+                }
+                if merged.get_path(std::path::Path::new(&path), 0).is_none() {
+                    removed_paths.push(path);
+                }
+                git2::TreeWalkResult::Ok
+            })
+            .map_err(err("walk our tree"))?;
+        real.write().map_err(err("index write"))?;
+        let mut sync = CheckoutBuilder::new();
+        sync.force().recreate_missing(true);
+        // Freeze the index: without this, checkout_index prunes every conflict
+        // stage that is not part of its target (checkout_get_remove_conflicts
+        // ignores the pathspec) and would destroy the parking state.
+        sync.update_index(false);
+        for path in &sync_paths {
+            sync.path(path);
+        }
+        repo.checkout_index(Some(&mut staging), Some(&mut sync))
+            .map_err(err("checkout merged files"))?;
+        if let Some(workdir) = workdir {
+            for path in &removed_paths {
+                let _ = std::fs::remove_file(workdir.join(path));
+            }
+        }
+        std::fs::write(merge_head_path(repo), format!("{}\n", their_commit.id()))
+            .map_err(io_err("write MERGE_HEAD"))?;
+        std::fs::write(
+            git_dir(repo).join("MERGE_MSG"),
+            format!("Merge branch '{name}'\n"),
+        )
+        .map_err(io_err("write MERGE_MSG"))?;
+        for (path, conflict) in &conflicted {
+            write_conflict_workdir(repo, conflict, path, name);
+        }
         return Ok(MergeOutcome {
             fast_forwarded: false,
-            conflicts,
+            conflicts: conflict_paths,
             status: status::status(repo_id, repo)?,
         });
     }
 
-    // Clean merge: commit right away with two parents.
+    // Clean merge: sync the merged tree into workdir + index BEFORE moving
+    // HEAD (same order as the ff path). checkout must run against the
+    // pre-merge HEAD as its baseline: checking out after the commit makes
+    // baseline == target, and the SAFE strategy then skips every file the
+    // merge modified, leaving workdir/index at pre-merge content (a staged
+    // reverse-diff against the new HEAD).
     let tree_id = merged.write_tree_to(repo).map_err(err("write tree"))?;
     let tree = repo.find_tree(tree_id).map_err(err("find tree"))?;
-    let sig = identity(repo)?;
-    let message = format!("Merge branch '{name}'");
-    let _commit_id = repo
-        .commit(
-            Some("HEAD"),
-            &sig,
-            &sig,
-            &message,
-            &tree,
-            &[&our_commit, &their_commit],
-        )
-        .map_err(|e| EgError::Internal {
-            context: format!("merge commit failed: {e}"),
-        })?;
-    // Real git leaves the workdir at the merged tree; sync it in.
     let mut builder = CheckoutBuilder::new();
     builder.recreate_missing(true);
-    repo.checkout_head(Some(&mut builder))
+    repo.checkout_tree(tree.as_object(), Some(&mut builder))
         .map_err(err("checkout merged"))?;
+    let sig = identity(repo)?;
+    let message = format!("Merge branch '{name}'");
+    if let Err(e) = repo.commit(
+        Some("HEAD"),
+        &sig,
+        &sig,
+        &message,
+        &tree,
+        &[&our_commit, &their_commit],
+    ) {
+        // The workdir/index are already at the merged tree; restore them to
+        // the pre-merge commit so a failed merge never leaves a half state.
+        let _ = repo.reset(our_commit.as_object(), ResetType::Hard, None);
+        return Err(EgError::Internal {
+            context: format!("merge commit failed: {e}"),
+        });
+    }
     Ok(MergeOutcome {
         fast_forwarded: false,
         conflicts: Vec::new(),

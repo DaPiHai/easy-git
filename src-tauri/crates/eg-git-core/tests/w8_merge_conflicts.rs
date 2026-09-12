@@ -468,3 +468,141 @@ fn merge_up_to_date_is_noop_and_dirty_tree_rejected() {
     let err = merge::merge_start(&mut repo, "t", "other", false).unwrap_err();
     assert!(matches!(err, EgError::DirtyWorktree { .. }));
 }
+
+/// Reads a file with line endings normalized: this repo's dev machines run
+/// `core.autocrlf=true`, so libgit2 checkouts legitimately produce CRLF and
+/// exact-LF assertions would fail on them (the known environment baseline).
+fn read_normalized(repo: &Repository, path: &str) -> String {
+    read_file(repo, path).replace("\r\n", "\n")
+}
+
+/// Regression (fix/merge-worktree-sync): a clean no-ff merge that MODIFIES and
+/// DELETES tracked files must leave the workdir + on-disk index at the merged
+/// tree. The old order (commit moved HEAD, then checkout_head made
+/// baseline == target, so the SAFE strategy skipped every modified/deleted
+/// path) left the pre-merge content behind and surfaced as a staged
+/// reverse-diff in status.
+#[test]
+fn clean_merge_syncs_workdir_and_index() {
+    let (_dir, mut repo) = init_repo();
+    let base = commit_all(
+        &repo,
+        &[],
+        "base",
+        &[
+            ("a.txt", "base-a\n"),
+            ("b.txt", "base-b\n"),
+            ("c.txt", "gone\n"),
+        ],
+    );
+    refs::create_branch(&repo, "feature", Some(base.to_string().as_str())).unwrap();
+    checkout(&repo, "refs/heads/feature");
+    let feature_tip = commit_all(&repo, &[&base], "feature work", &[("a.txt", "feature-a\n")]);
+    // The feature also DELETES c.txt (commit_all cannot express this).
+    std::fs::remove_file(repo.workdir().unwrap().join("c.txt")).unwrap();
+    {
+        let mut index = repo.index().unwrap();
+        index.remove_all(["c.txt"], None).unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let sig = Signature::new("张三", "z@ex.com", &Time::new(2, 0)).unwrap();
+        let feature_commit = repo.find_commit(feature_tip).unwrap();
+        repo.commit(
+            Some("HEAD"),
+            &sig,
+            &sig,
+            "feature deletes c.txt",
+            &tree,
+            &[&feature_commit],
+        )
+        .unwrap();
+    }
+    checkout(&repo, "refs/heads/main");
+    let _main_tip = commit_all(&repo, &[&base], "main work", &[("b.txt", "main-b\n")]);
+
+    let outcome = merge_feature(&mut repo, true);
+
+    assert!(!outcome.fast_forwarded);
+    assert!(outcome.conflicts.is_empty());
+    // Workdir follows the merged tree in both directions.
+    assert_eq!(read_normalized(&repo, "a.txt"), "feature-a\n");
+    assert_eq!(read_normalized(&repo, "b.txt"), "main-b\n");
+    assert!(
+        !repo.workdir().unwrap().join("c.txt").exists(),
+        "deleted on the feature branch, so the merge removes it from the workdir"
+    );
+    // The symptom of the bug: the merged changes showed up as staged
+    // modifications against the new HEAD. Everything must be clean.
+    assert!(
+        outcome.status.staged.is_empty(),
+        "staged: {:?}",
+        outcome.status.staged
+    );
+    assert!(
+        outcome.status.unstaged.is_empty(),
+        "unstaged: {:?}",
+        outcome.status.unstaged
+    );
+    assert!(outcome.status.conflicted.is_empty());
+    assert!(merge::merge_state(&repo).unwrap().is_none());
+}
+
+/// Regression (fix/merge-worktree-sync): a conflicted merge parks only its
+/// conflicts; the non-conflicted merged files must already be in the workdir
+/// (real git checks the whole merged result out), not just in the parking
+/// index — otherwise finalize leaves them as a reverse-diff.
+#[test]
+fn conflicted_merge_syncs_nonconflicted_files() {
+    let (_dir, mut repo) = init_repo();
+    let base = commit_all(
+        &repo,
+        &[],
+        "base",
+        &[("shared.txt", "line1\n"), ("other.txt", "base-other\n")],
+    );
+    refs::create_branch(&repo, "feature", Some(base.to_string().as_str())).unwrap();
+    checkout(&repo, "refs/heads/feature");
+    let _feature_tip = commit_all(
+        &repo,
+        &[&base],
+        "feature work",
+        &[
+            ("shared.txt", "feature edit\n"),
+            ("other.txt", "feature-other\n"),
+        ],
+    );
+    checkout(&repo, "refs/heads/main");
+    let _main_tip = commit_all(
+        &repo,
+        &[&base],
+        "main work",
+        &[("shared.txt", "main edit\n")],
+    );
+
+    let outcome = merge_feature(&mut repo, true);
+
+    assert_eq!(outcome.conflicts, vec!["shared.txt".to_string()]);
+    // The conflicted file carries markers for the wizard.
+    let shared = read_normalized(&repo, "shared.txt");
+    assert!(shared.contains("<<<<<<<"));
+    assert!(shared.contains("main edit"));
+    assert!(shared.contains("feature edit"));
+    // The non-conflicted change is already in the workdir...
+    assert_eq!(read_normalized(&repo, "other.txt"), "feature-other\n");
+    // ...and staged (parking index), not unstaged.
+    assert!(
+        outcome.status.staged.iter().any(|e| e.path == "other.txt"),
+        "staged: {:?}",
+        outcome.status.staged
+    );
+    assert!(
+        outcome
+            .status
+            .unstaged
+            .iter()
+            .all(|e| e.path != "other.txt"),
+        "unstaged: {:?}",
+        outcome.status.unstaged
+    );
+}
