@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { reportError } from '../lib/ipc/report';
 import { t } from '../lib/i18n';
 import {
   diffFile,
@@ -82,8 +83,7 @@ export const useDiffStore = create<DiffState>()((set, get) => ({
       await get().open(request); // refetch the shrunken diff
       return true;
     } catch (error) {
-      const humanized = formatIpcError(error as EgErrorLike);
-      toast.error(humanized.title, humanized.detail);
+      reportError(error, 'diff.stageLines');
       return false;
     }
   },

@@ -37,4 +37,36 @@ describe('humanizeEgError', () => {
     expect(result.title).toBe('出了点问题');
     expect(result.hint?.action).toBe('open-logs');
   });
+
+  it('carries the structured detail as the technical reason', () => {
+    const result = humanizeEgError({
+      code: 'network',
+      kind: 'connect',
+      url: 'origin',
+      detail: 'fatal: could not resolve host: host',
+    });
+    expect(result.reason).toBe('fatal: could not resolve host: host');
+    expect(result.detail).toContain('origin');
+  });
+
+  it('omits the reason when the core sent none', () => {
+    const result = humanizeEgError({ code: 'auth', provider: 'git' });
+    expect(result.reason).toBeUndefined();
+  });
+
+  it('exposes internal context as the reason instead of inline detail', () => {
+    const result = humanizeEgError({ code: 'internal', context: 'git gc failed: boom' });
+    expect(result.reason).toBe('git gc failed: boom');
+    expect(result.detail).not.toContain('boom');
+  });
+
+  it('keeps repo_not_found path clean and moves the libgit2 message to the reason', () => {
+    const result = humanizeEgError({
+      code: 'repo_not_found',
+      path: '/tmp/demo',
+      detail: 'invalid repository path',
+    });
+    expect(result.detail).toBe('路径「/tmp/demo」不是一个 Git 仓库');
+    expect(result.reason).toBe('invalid repository path');
+  });
 });

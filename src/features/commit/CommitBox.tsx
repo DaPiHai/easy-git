@@ -2,7 +2,8 @@ import { AlertTriangle, GitCommitHorizontal, Loader2, UserRoundX } from 'lucide-
 import { useEffect, useRef, useState } from 'react';
 import { Checkbox } from '../../components';
 import { t } from '../../lib/i18n';
-import { humanizeEgError, type EgErrorLike } from '../../lib/ipc/errors';
+import { reportError } from '../../lib/ipc/report';
+import type { EgErrorLike } from '../../lib/ipc/errors';
 import { useLensStore } from '../../stores/lensStore';
 import { useMergeStore } from '../../stores/mergeStore';
 import { useRepoStore } from '../../stores/repoStore';
@@ -86,8 +87,7 @@ export function CommitBox() {
           );
           return;
         }
-        const humanized = humanizeEgError(error);
-        toast.error(humanized.title, humanized.detail);
+        reportError(error, 'commit');
       })
       .finally(() => setSubmitting(false));
   };

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { reportError } from '../lib/ipc/report';
 import { t } from '../lib/i18n';
 import {
   branchSetUpstream,
@@ -199,8 +200,7 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
       await get().refresh();
       return true;
     } catch (error) {
-      const humanized = formatIpcError(error as EgErrorLike);
-      toast.error(humanized.title, humanized.detail);
+      reportError(error, 'sync');
       return false;
     } finally {
       set({ busy: null, progress: null });
@@ -233,8 +233,7 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
       if (raw.code === 'conflict_state' && String(raw.state ?? '').includes('分叉')) {
         return 'diverged';
       }
-      const humanized = formatIpcError(raw);
-      toast.error(humanized.title, humanized.detail);
+      reportError(raw, 'sync');
       return 'error';
     } finally {
       set({ busy: null, progress: null });
@@ -290,8 +289,7 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
         return 'ok';
       }
     } catch (error) {
-      const humanized = formatIpcError(error as EgErrorLike);
-      toast.error(humanized.title, humanized.detail);
+      reportError(error, 'sync');
       return 'error';
     } finally {
       set({ busy: null, progress: null });
@@ -306,8 +304,7 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
       toast.success(t('sync.testOk', { count }));
       return count;
     } catch (error) {
-      const humanized = formatIpcError(error as EgErrorLike);
-      toast.error(humanized.title, humanized.detail);
+      reportError(error, 'sync');
       return null;
     }
   },
@@ -322,8 +319,7 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
       await get().refresh();
       return true;
     } catch (error) {
-      const humanized = formatIpcError(error as EgErrorLike);
-      toast.error(humanized.title, humanized.detail);
+      reportError(error, 'sync');
       return false;
     }
   },
@@ -338,8 +334,7 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
       await get().refresh();
       return true;
     } catch (error) {
-      const humanized = formatIpcError(error as EgErrorLike);
-      toast.error(humanized.title, humanized.detail);
+      reportError(error, 'sync');
       return false;
     }
   },
@@ -354,8 +349,7 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
       await get().refresh();
       return true;
     } catch (error) {
-      const humanized = formatIpcError(error as EgErrorLike);
-      toast.error(humanized.title, humanized.detail);
+      reportError(error, 'sync');
       return false;
     }
   },
@@ -370,8 +364,7 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
       await get().refresh();
       return true;
     } catch (error) {
-      const humanized = formatIpcError(error as EgErrorLike);
-      toast.error(humanized.title, humanized.detail);
+      reportError(error, 'sync');
       return false;
     }
   },
@@ -386,8 +379,7 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
       await get().refresh();
       return outcome.opId;
     } catch (error) {
-      const humanized = formatIpcError(error as EgErrorLike);
-      toast.error(humanized.title, humanized.detail);
+      reportError(error, 'sync');
       return null;
     }
   },
@@ -408,8 +400,7 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
       await get().refreshTimeline();
       return outcome.opId;
     } catch (error) {
-      const humanized = formatIpcError(error as EgErrorLike);
-      toast.error(humanized.title, humanized.detail);
+      reportError(error, 'sync');
       return null;
     }
   },
@@ -430,8 +421,7 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
       await get().refresh();
       return true;
     } catch (error) {
-      const humanized = formatIpcError(error as EgErrorLike);
-      toast.error(humanized.title, humanized.detail);
+      reportError(error, 'sync');
       return false;
     }
   },

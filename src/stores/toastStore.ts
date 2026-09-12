@@ -12,9 +12,16 @@ export interface ToastItem {
   kind: ToastKind;
   message: string;
   detail?: string;
+  /** Raw failure reason (git stderr tail) for the expandable detail block. */
+  reason?: string;
   action?: ToastAction;
   /** Auto-dismiss delay in ms; undo toasts live a little longer. */
   duration: number;
+}
+
+export interface ErrorToastOptions {
+  reason?: string;
+  action?: ToastAction;
 }
 
 interface ToastState {
@@ -41,8 +48,16 @@ export const useToastStore = create<ToastState>()((set, get) => ({
 export const toast = {
   success: (message: string, detail?: string) =>
     useToastStore.getState().push({ kind: 'success', message, detail }),
-  error: (message: string, detail?: string) =>
-    useToastStore.getState().push({ kind: 'error', message, detail }),
+  error: (message: string, detail?: string, options?: ErrorToastOptions) =>
+    useToastStore.getState().push({
+      kind: 'error',
+      message,
+      detail,
+      ...options,
+      // A 4s toast cannot be read, let alone expanded (UI doc §6.11 tweak,
+      // recorded in TDD §11): failure reasons get double the dwell time.
+      duration: 8000,
+    }),
   info: (message: string, action?: ToastAction, duration = 8000) =>
     useToastStore.getState().push({ kind: 'info', message, action, duration }),
 };

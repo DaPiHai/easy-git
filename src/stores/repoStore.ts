@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { reportError } from '../lib/ipc/report';
 import {
   cleanExecute,
   closeRepo,
@@ -30,7 +31,6 @@ import type { RepoChanged } from '../lib/ipc/bindings';
 import { useMergeStore } from './mergeStore';
 import type { ChangeEntry } from '../lib/ipc/commands';
 import { useLensStore } from './lensStore';
-import { toast } from './toastStore';
 
 export interface RepoMeta {
   path: string;
@@ -174,9 +174,7 @@ export const useRepoStore = create<RepoState>()((set, get) => {
 
   /** R-08: operation failures surface as a toast, not just the wizard banner. */
   const failLoudly = (error: unknown): void => {
-    const humanized = humanize(error);
-    set({ error: humanized });
-    toast.error(humanized.title, humanized.detail);
+    set({ error: reportError(error, 'repo') });
   };
 
   return {

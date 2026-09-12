@@ -34,19 +34,29 @@ export interface HintAction {
 export interface HumanizedError {
   title: string;
   detail: string;
+  /**
+   * Raw failure reason (git stderr tail, libgit2 message) for the expandable
+   * toast detail — the 人话 detail stays separate from the technical cause.
+   */
+  reason?: string;
   hint?: HintAction;
 }
 
 type ErrorTemplate = {
   title: string;
   detail: (params: Record<string, unknown>) => string;
+  reason?: (params: Record<string, unknown>) => string | undefined;
   hint?: HintAction;
 };
+
+const asString = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.trim() !== '' ? value : undefined;
 
 const templates: Record<EgErrorCode, ErrorTemplate> = {
   repo_not_found: {
     title: '找不到仓库',
     detail: (p) => `路径「${String(p.path ?? '')}」不是一个 Git 仓库`,
+    reason: (p) => asString(p.detail),
     hint: { action: 'open-repo-picker', label: '重新选择仓库' },
   },
   dirty_worktree: {
@@ -62,17 +72,20 @@ const templates: Record<EgErrorCode, ErrorTemplate> = {
   network: {
     title: '网络连接失败',
     detail: (p) =>
-      `无法连接 ${String(p.url ?? '远程仓库')}（${String(p.kind ?? 'network')}），请检查网络或代理设置`,
+      `无法连接 ${String(p.url ?? '') || '远程仓库'}（${String(p.kind ?? 'network')}），请检查网络或代理设置`,
+    reason: (p) => asString(p.detail),
     hint: { action: 'open-settings-network', label: '打开网络设置' },
   },
   auth: {
     title: '身份验证失败',
     detail: (p) => `${String(p.provider ?? '远程平台')} 拒绝了当前凭据，请更新登录信息`,
+    reason: (p) => asString(p.detail),
     hint: { action: 'open-credentials', label: '管理凭据' },
   },
   conflict_state: {
     title: '存在未解决的冲突',
     detail: (p) => `当前处于「${String(p.state ?? 'conflict')}」状态，请先完成冲突解决`,
+    reason: (p) => asString(p.detail),
     hint: { action: 'open-conflict-wizard', label: '打开冲突向导' },
   },
   unsafe_operation: {
@@ -96,7 +109,8 @@ const templates: Record<EgErrorCode, ErrorTemplate> = {
   },
   internal: {
     title: '出了点问题',
-    detail: (p) => `内部错误${p.context ? `（${String(p.context)}）` : ''}，已记录到日志`,
+    detail: () => '内部错误，已记录到日志',
+    reason: (p) => asString(p.context),
     hint: { action: 'open-logs', label: '查看日志' },
   },
 };
@@ -104,6 +118,7 @@ const templates: Record<EgErrorCode, ErrorTemplate> = {
 const fallback: ErrorTemplate = {
   title: '出了点问题',
   detail: () => '发生了未知错误，已记录日志',
+  reason: (p) => asString(p.detail) ?? asString(p.context),
   hint: { action: 'open-logs', label: '查看日志' },
 };
 
@@ -117,6 +132,7 @@ export function humanizeEgError(error: EgErrorLike): HumanizedError {
   return {
     title: template.title,
     detail: template.detail(rest),
+    reason: template.reason?.(rest),
     hint: template.hint ? { ...template.hint } : undefined,
   };
 }

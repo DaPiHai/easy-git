@@ -1,4 +1,5 @@
-import { AlertTriangle, CheckCircle2, Info, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Info, X } from 'lucide-react';
+import { useState } from 'react';
 import { useToastStore, type ToastItem, type ToastKind } from '../stores/toastStore';
 
 const kindIcon: Record<ToastKind, typeof Info> = {
@@ -30,6 +31,7 @@ export function ToastHost() {
 
 function Toast({ item, onDismiss }: { item: ToastItem; onDismiss: () => void }) {
   const Icon = kindIcon[item.kind];
+  const [expanded, setExpanded] = useState(false);
   return (
     <div
       role="status"
@@ -44,19 +46,52 @@ function Toast({ item, onDismiss }: { item: ToastItem; onDismiss: () => void }) 
             {item.detail}
           </div>
         ) : null}
+        {item.reason ? (
+          expanded ? (
+            <pre
+              data-testid="toast-reason"
+              className="mt-1 max-h-32 overflow-auto rounded bg-surface-2 p-1.5 font-mono text-caption whitespace-pre-wrap break-words text-ink-tertiary"
+            >
+              {item.reason}
+            </pre>
+          ) : null
+        ) : null}
       </div>
-      {item.action ? (
-        <button
-          type="button"
-          onClick={() => {
-            item.action?.onClick();
-            onDismiss();
-          }}
-          className="shrink-0 rounded-md px-2 py-0.5 text-secondary font-medium text-primary hover:bg-surface-2"
-        >
-          {item.action.label}
-        </button>
-      ) : null}
+      <div className="flex shrink-0 flex-col items-end gap-1">
+        {item.reason ? (
+          <button
+            type="button"
+            data-testid="toast-expand"
+            aria-expanded={expanded}
+            onClick={() => setExpanded((value) => !value)}
+            className="flex items-center gap-0.5 text-caption text-ink-tertiary hover:text-ink"
+          >
+            {expanded ? (
+              <>
+                <ChevronUp className="size-3" aria-hidden />
+                收起
+              </>
+            ) : (
+              <>
+                <ChevronDown className="size-3" aria-hidden />
+                详情
+              </>
+            )}
+          </button>
+        ) : null}
+        {item.action ? (
+          <button
+            type="button"
+            onClick={() => {
+              item.action?.onClick();
+              onDismiss();
+            }}
+            className="rounded-md px-2 py-0.5 text-secondary font-medium text-primary hover:bg-surface-2"
+          >
+            {item.action.label}
+          </button>
+        ) : null}
+      </div>
       <button
         type="button"
         onClick={onDismiss}
