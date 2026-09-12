@@ -858,12 +858,9 @@ where
 
 fn app_logs_dir(app: &AppHandle) -> Result<PathBuf, EgError> {
     use tauri::Manager;
-    let app_data = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| EgError::Internal {
-            context: format!("app data dir unavailable: {e}"),
-        })?;
+    let app_data = app.path().app_data_dir().map_err(|e| EgError::Internal {
+        context: format!("app data dir unavailable: {e}"),
+    })?;
     Ok(crate::logs::logs_dir(&app_data))
 }
 
