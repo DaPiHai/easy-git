@@ -289,3 +289,15 @@ fn mid_size_opens_within_one_and_a_half_seconds() {
     );
     manager.close(&summary.repo_id);
 }
+
+/// 手动验证（默认忽略）：在 libgit2 所有权误报的 Windows 机器上（目录属于
+/// `BUILTIN\Administrators`、进程为非提升管理员），本仓库路径会触发
+/// `code=Owner`；修复后 `repo::open` 应通过 git CLI 对齐放行并成功打开。
+/// 跑法：`cargo test -p eg-git-core --test w2_repo_foundation -- --ignored`。
+#[test]
+#[ignore = "环境相关：需要 libgit2 所有权误报的机器（Windows 管理员组拥有的目录）"]
+fn owner_denied_repo_opens_via_git_alignment() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let repo = eg_git_core::repo::open(&root);
+    assert!(repo.is_ok(), "repo::open failed: {:?}", repo.err());
+}

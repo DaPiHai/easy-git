@@ -6,6 +6,7 @@ export const zhCN = {
   'app.title': 'EasyGit',
 
   'topbar.openRepo': '打开仓库',
+  'topbar.openFolder': '打开文件夹',
   'topbar.search': '搜索',
   'topbar.detailPanel': '详情面板',
 
@@ -108,6 +109,7 @@ export const zhCN = {
   'toast.staged': '已暂存 {n} 个文件',
   'toast.unstaged': '已取消暂存 {n} 个文件',
   'toast.ignored': '已写入 .gitignore',
+  'toast.openFolderFailed': '无法打开文件夹，请稍后重试',
   'toast.gitignoreCreated': '已创建 .gitignore',
 
   'commit.title': '提交',

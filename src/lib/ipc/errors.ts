@@ -9,6 +9,7 @@
 
 export type EgErrorCode =
   | 'repo_not_found'
+  | 'repo_ownership'
   | 'dirty_worktree'
   | 'network'
   | 'auth'
@@ -58,6 +59,12 @@ const templates: Record<EgErrorCode, ErrorTemplate> = {
     detail: (p) => `路径「${String(p.path ?? '')}」不是一个 Git 仓库`,
     reason: (p) => asString(p.detail),
     hint: { action: 'open-repo-picker', label: '重新选择仓库' },
+  },
+  repo_ownership: {
+    title: '无法打开这个文件夹',
+    detail: (p) =>
+      `「${String(p.path ?? '')}」属于其他用户或系统账户，Git 出于安全默认拒绝访问（git 命令行同样会拒绝）`,
+    reason: (p) => asString(p.detail),
   },
   dirty_worktree: {
     title: '工作区有未提交的修改',

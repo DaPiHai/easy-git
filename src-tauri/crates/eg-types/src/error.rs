@@ -17,6 +17,15 @@ pub enum EgError {
         #[serde(skip_serializing_if = "Option::is_none")]
         detail: Option<String>,
     },
+    /// The repository exists but its folder is owned by another user, and the
+    /// real git CLI agrees with the refusal (libgit2-only refusals are aligned
+    /// away silently in eg-git-core). The user must explicitly allow the
+    /// folder via `safe.directory`.
+    RepoOwnership {
+        path: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        detail: Option<String>,
+    },
     /// The worktree has uncommitted changes that the operation would clobber.
     DirtyWorktree { paths: Vec<String> },
     /// Remote connection failed; `kind` distinguishes dns/timeout/proxy.
@@ -58,6 +67,7 @@ impl EgError {
     pub fn code(&self) -> &'static str {
         match self {
             EgError::RepoNotFound { .. } => "repo_not_found",
+            EgError::RepoOwnership { .. } => "repo_ownership",
             EgError::DirtyWorktree { .. } => "dirty_worktree",
             EgError::Network { .. } => "network",
             EgError::Auth { .. } => "auth",

@@ -1169,7 +1169,7 @@ impl RepoManager {
     /// the summary of the already-open worker for the same canonical path.
     pub fn open(&self, path: &Path, on_change: ChangeSink) -> Result<RepoSummary, EgError> {
         let canonical = path.canonicalize().map_err(|e| EgError::RepoNotFound {
-            path: path.display().to_string(),
+            path: eg_types::paths::display_path(path),
             detail: Some(e.to_string()),
         })?;
 

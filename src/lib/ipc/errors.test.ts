@@ -9,6 +9,18 @@ describe('humanizeEgError', () => {
     expect(result.hint?.action).toBe('open-repo-picker');
   });
 
+  it('maps repo_ownership to the folder-ownership explanation with the raw reason', () => {
+    const result = humanizeEgError({
+      code: 'repo_ownership',
+      path: 'C:\\demo',
+      detail: "repository path 'C:/demo' is not owned by current user",
+    });
+    expect(result.title).toBe('无法打开这个文件夹');
+    expect(result.detail).toContain('C:\\demo');
+    expect(result.detail).toContain('Git 出于安全默认拒绝访问');
+    expect(result.reason).toContain('is not owned by current user');
+  });
+
   it('maps auth with the provider name', () => {
     const result = humanizeEgError({ code: 'auth', provider: 'GitLab' });
     expect(result.detail).toContain('GitLab');

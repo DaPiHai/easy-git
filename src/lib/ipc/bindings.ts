@@ -417,6 +417,13 @@ export type EgError_Deserialize =
  *  the underlying libgit2/IO message when there is one.
  */
 ({ code: "repo_not_found"; path: string; detail: string | null }) & { confirm_required?: never; context?: never; feature?: never; kind?: never; paths?: never; provider?: never; state?: never; url?: never } | 
+/**
+ *  The repository exists but its folder is owned by another user, and the
+ *  real git CLI agrees with the refusal (libgit2-only refusals are aligned
+ *  away silently in eg-git-core). The user must explicitly allow the
+ *  folder via `safe.directory`.
+ */
+({ code: "repo_ownership"; path: string; detail: string | null }) & { confirm_required?: never; context?: never; feature?: never; kind?: never; paths?: never; provider?: never; state?: never; url?: never } | 
 /**  The worktree has uncommitted changes that the operation would clobber. */
 ({ code: "dirty_worktree"; paths: string[] }) & { confirm_required?: never; context?: never; detail?: never; feature?: never; kind?: never; path?: never; provider?: never; state?: never; url?: never } | 
 /**
@@ -448,6 +455,13 @@ export type EgError_Serialize =
  *  the underlying libgit2/IO message when there is one.
  */
 ({ code: "repo_not_found"; path: string; detail?: string | null }) & { confirm_required?: never; context?: never; feature?: never; kind?: never; paths?: never; provider?: never; state?: never; url?: never } | 
+/**
+ *  The repository exists but its folder is owned by another user, and the
+ *  real git CLI agrees with the refusal (libgit2-only refusals are aligned
+ *  away silently in eg-git-core). The user must explicitly allow the
+ *  folder via `safe.directory`.
+ */
+({ code: "repo_ownership"; path: string; detail?: string | null }) & { confirm_required?: never; context?: never; feature?: never; kind?: never; paths?: never; provider?: never; state?: never; url?: never } | 
 /**  The worktree has uncommitted changes that the operation would clobber. */
 ({ code: "dirty_worktree"; paths: string[] }) & { confirm_required?: never; context?: never; detail?: never; feature?: never; kind?: never; path?: never; provider?: never; state?: never; url?: never } | 
 /**

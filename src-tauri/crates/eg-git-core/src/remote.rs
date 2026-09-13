@@ -487,7 +487,7 @@ impl GitCli {
                 credentials: credentials.cloned(),
             },
         )?;
-        if Repository::open(path).is_ok() && ok {
+        if crate::repo::open_exact(path).is_ok() && ok {
             Ok(())
         } else {
             Err(humanize_network(&stderr, Some(url)))
@@ -661,10 +661,7 @@ pub fn pull_integrate(
 /// High-level entry points for the IPC layer: everything git-related stays
 /// inside eg-git-core (TDD §3), the app crate only passes ids and handles.
 fn open_repo(path: &Path) -> Result<Repository, EgError> {
-    Repository::open(path).map_err(|e| EgError::RepoNotFound {
-        path: path.display().to_string(),
-        detail: Some(e.to_string()),
-    })
+    crate::repo::open_exact(path)
 }
 
 /// Records the pre-push remote tip and force-pushes (强推可回滚, R-22).
