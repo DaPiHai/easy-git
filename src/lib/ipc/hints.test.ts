@@ -14,6 +14,8 @@ vi.mock('../logger', () => ({
     warn: (...args: unknown[]) => logWarn(...args),
     error: vi.fn(),
   },
+  describeError: (error: unknown) =>
+    error instanceof Error ? (error.stack ?? error.message) : String(error),
 }));
 
 vi.mock('@tauri-apps/plugin-opener', () => ({

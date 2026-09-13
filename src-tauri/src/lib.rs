@@ -4,6 +4,7 @@ pub mod logs;
 
 use eg_git_core::RepoManager;
 use eg_safety::Safety;
+#[cfg(debug_assertions)]
 use specta_typescript::Typescript;
 use tauri::{Manager, RunEvent};
 use tauri_specta::{collect_commands, collect_events, Builder, ErrorHandlingMode};

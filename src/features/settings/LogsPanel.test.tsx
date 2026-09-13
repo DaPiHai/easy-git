@@ -8,6 +8,7 @@ const logsDirMock = vi.fn<(...args: unknown[]) => Promise<string | null>>();
 const logsListMock = vi.fn<(...args: unknown[]) => Promise<unknown[]>>();
 const logsReadMock = vi.fn<(...args: unknown[]) => Promise<unknown>>();
 const openPathMock = vi.fn<(...args: unknown[]) => Promise<void>>();
+const logWebMock = vi.fn<(...args: unknown[]) => Promise<void>>();
 
 vi.mock('../../lib/ipc/commands', () => ({
   logsDir: (...args: unknown[]) => logsDirMock(...args),
@@ -17,10 +18,13 @@ vi.mock('../../lib/ipc/commands', () => ({
     title: '错误',
     detail: String(error),
   }),
+  // reportFailure → logger → logWeb；mock 工厂是整模块替换，缺了会炸。
+  logWeb: (...args: unknown[]) => logWebMock(...args),
 }));
 
 vi.mock('@tauri-apps/plugin-opener', () => ({
   openPath: (...args: unknown[]) => openPathMock(...args),
+  openUrl: vi.fn(),
 }));
 
 const SAMPLE = [
@@ -99,5 +103,24 @@ describe('LogsPanel', () => {
     await screen.findByTestId('logs-content');
     await userEvent.click(screen.getByText('打开文件夹'));
     expect(openPathMock).toHaveBeenCalledWith('C:/logs');
+  });
+
+  it('keeps the cause and logs it when the opener refuses the folder', async () => {
+    // ACL/scope 被拒时插件回的是字符串（forbidden path…），用户排查全靠这行日志。
+    openPathMock.mockRejectedValue('forbidden path: C:/logs');
+    render(<LogsPanel />);
+    await screen.findByTestId('logs-content');
+    await userEvent.click(screen.getByText('打开文件夹'));
+    await waitFor(() => {
+      const toasts = useToastStore.getState().toasts;
+      const last = toasts[toasts.length - 1];
+      expect(last?.message).toBe('无法打开日志文件夹');
+      expect(last?.reason).toContain('forbidden path');
+    });
+    expect(logWebMock).toHaveBeenCalledWith(
+      'error',
+      'settings.open-log-folder',
+      expect.stringContaining('forbidden path'),
+    );
   });
 });

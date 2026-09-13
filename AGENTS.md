@@ -37,8 +37,8 @@ docs/
 - 分层：前端 `src/`（React）与 Rust 核心 `src-tauri/crates/`（eg-types、eg-git-core、eg-safety、eg-providers、eg-indexer）；git 逻辑只存在于 eg-git-core/eg-safety，前端命令层不写 git 逻辑。
 - Git 交互为 git2-rs + git CLI 混合（复杂操作 CLI 兜底，网络操作走 git CLI `--progress` 流式上报 `sync://progress`；另有 `repo://changed` 事件）；每仓库一个 RepoWorker 线程（Repository 非 Sync）；行为必须与真实 git 一致并有断言测试。
 - 组件不直接调用 IPC：组件 → Zustand store → `src/lib/ipc` 封装 → Rust 命令；类型绑定 `src/lib/ipc/bindings.ts` 由 tauri-specta 每次 debug 启动生成，禁止手改（eslint 已忽略该文件）。
-- 错误：Rust 侧统一 `EgError`（TDD §6）扁平序列化 `{code, ...params}`；中文人话文案只放在 `src/lib/ipc/errors.ts`。前端捕获 IPC 错误统一走 `reportError`（`src/lib/ipc/report.ts`，toast 带可展开原因与建议动作，动作由 `hints.ts` 分发），禁止 catch 后吞成固定文案、或把 `EgError` 当 `{title, detail}` 读（没有这两个字段）。
-- capabilities 仅 `core:default` + `dialog:default`（`src-tauri/capabilities/default.json`），加权限需同步说明理由。
+- 错误：Rust 侧统一 `EgError`（TDD §6）扁平序列化 `{code, ...params}`；中文人话文案只放在 `src/lib/ipc/errors.ts`。前端捕获 IPC 错误统一走 `reportError`（`src/lib/ipc/report.ts`，toast 带可展开原因与建议动作，动作由 `hints.ts` 分发），禁止 catch 后吞成固定文案、或把 `EgError` 当 `{title, detail}` 读（没有这两个字段）。不属于 EgError 的集成失败（如 opener 打开文件夹被拒）走同文件的 `reportFailure`：保留该功能自己的文案，但同样带可展开原因 + 日志行。
+- capabilities 为 `core:default` + `dialog:default` + `opener:default`（`src-tauri/capabilities/default.json`）。`opener:allow-open-path` 必须自带路径 scope（当前 `{"path":"**"}`）：该权限不带预置 scope，allow 列表为空时插件一律拒绝（`Error::ForbiddenPath`），缺了就是「打开文件夹」静默失败。加权限需同步说明理由。
 - 样式只用语义令牌 `--eg-*`（明暗双主题同步维护），禁止硬编码色值；危险操作遵循「红色 + 确认 + 可撤销」三件套。
 - 界面文案中文并遵循 PRD §6.7 术语表（如 stash=储藏、fetch=获取、pull=拉取），代码注释与标识符用英文；文档与提交说明用中文。
 - 破坏性操作（reset/强推/删除分支/丢弃修改）必须先过 eg-safety 快照点，且必须附带撤销/恢复测试。

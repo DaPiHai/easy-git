@@ -1,12 +1,19 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capabilities for the EasyGit main window.",
+  "description": "Default capabilities for the EasyGit main window. `opener:allow-open-path` must carry a path scope: the permission pre-configures none, and the opener plugin denies every path while the allow list is empty (`Error::ForbiddenPath`), so the 打开文件夹 entry fails silently without it. `**` matches any user-chosen absolute path, which is what a repo folder and the log folder are.",
   "windows": ["main"],
   "permissions": [
     "core:default",
     "dialog:default",
     "opener:default",
-    "opener:allow-open-path"
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [
+        {
+          "path": "**"
+        }
+      ]
+    }
   ]
 }

@@ -180,6 +180,7 @@ export const zhCN = {
   'logs.copyFailed': '复制失败，请手动选择内容复制',
   'logs.openFolder': '打开文件夹',
   'logs.openFailed': '无法打开日志文件夹',
+  'logs.view': '查看日志',
   'shortcuts.switcher': '打开仓库切换器',
   'shortcuts.views':
     '切换主视图：1 变更 · 2 历史 · 3 分支 · 4 储藏 · 5 时间线 · 6 远程（Alt+数字）',

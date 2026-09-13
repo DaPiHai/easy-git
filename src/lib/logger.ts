@@ -13,7 +13,9 @@ export const appLog = {
   error: (scope: string, message: string) => void logWeb('error', scope, message),
 };
 
-function describeError(error: unknown): string {
+/** Human-readable form of a thrown value: stack for Errors, `String()` otherwise
+ * (IPC rejections arrive as plain strings). */
+export function describeError(error: unknown): string {
   if (error instanceof Error) return error.stack ?? error.message;
   return String(error);
 }

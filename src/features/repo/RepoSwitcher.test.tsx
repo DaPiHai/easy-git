@@ -6,10 +6,21 @@ import { useRepoStore } from '../../stores/repoStore';
 import { useToastStore } from '../../stores/toastStore';
 
 const openPathMock = vi.fn<(...args: unknown[]) => Promise<void>>();
+const logErrorMock = vi.fn();
 
 vi.mock('@tauri-apps/plugin-opener', () => ({
   openPath: (...args: unknown[]) => openPathMock(...args),
   openUrl: vi.fn(),
+}));
+
+vi.mock('../../lib/logger', () => ({
+  appLog: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: (...args: unknown[]) => logErrorMock(...args),
+  },
+  describeError: (error: unknown) =>
+    error instanceof Error ? (error.stack ?? error.message) : String(error),
 }));
 
 // jsdom 不实现 pointer capture / scrollIntoView，radix DropdownMenu 需要它们。
@@ -67,14 +78,23 @@ describe('openRepoFolder', () => {
     expect(openPathMock).toHaveBeenCalledWith('C:\\demo');
   });
 
-  it('toasts an error when the opener fails', async () => {
-    openPathMock.mockRejectedValue(new Error('denied'));
+  it('toasts the cause and logs it when the opener fails', async () => {
+    // 权限/路径 scope 被拒时插件回的是字符串（forbidden path…）：这句必须
+    // 既出现在 toast 的可展开原因里，也落到日志文件里。
+    openPathMock.mockRejectedValue('forbidden path: C:\\demo');
     openRepoFolder('\\\\?\\C:\\demo');
     await waitFor(() => {
       const toasts = useToastStore.getState().toasts;
-      expect(toasts[toasts.length - 1]?.kind).toBe('error');
-      expect(toasts[toasts.length - 1]?.message).toBe('无法打开文件夹，请稍后重试');
+      const last = toasts[toasts.length - 1];
+      expect(last?.kind).toBe('error');
+      expect(last?.message).toBe('无法打开文件夹，请稍后重试');
+      expect(last?.reason).toContain('forbidden path');
+      expect(last?.action?.label).toBe('查看日志');
     });
+    expect(logErrorMock).toHaveBeenCalledWith(
+      'repo.open-folder',
+      expect.stringContaining('forbidden path'),
+    );
   });
 
   it('does not toast on success', async () => {

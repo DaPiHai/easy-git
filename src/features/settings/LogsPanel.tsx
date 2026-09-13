@@ -17,6 +17,7 @@ import {
   type LogFileInfo,
 } from '../../lib/ipc/commands';
 import type { EgErrorLike } from '../../lib/ipc/errors';
+import { reportFailure } from '../../lib/ipc/report';
 import { toast } from '../../stores/toastStore';
 
 type LevelFilter = 'all' | 'error' | 'warn' | 'info';
@@ -124,7 +125,9 @@ export function LogsPanel() {
 
   const openFolder = () => {
     if (!dir) return;
-    Promise.resolve(openPath(dir)).catch(() => toast.error(t('logs.openFailed')));
+    Promise.resolve(openPath(dir)).catch((error: unknown) => {
+      reportFailure('settings.open-log-folder', t('logs.openFailed'), error);
+    });
   };
 
   return (
