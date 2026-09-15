@@ -193,6 +193,11 @@ export const commands = {
 	 *  absolute or `~/`-relative; entries are bare names (`-p` marks dirs).
 	 */
 	sshBrowseDir: (location: string, dir: string) => typedError<string[], EgError_Serialize>(__TAURI_INVOKE("ssh_browse_dir", { location, dir })),
+	/**
+	 *  Reads the local ssh-agent state and `~/.ssh/*.pub` for the settings
+	 *  "管理凭据" section. Read-only — no private keys, no remote calls.
+	 */
+	sshCredentialsOverview: () => typedError<SshCredentialsOverview, EgError_Serialize>(__TAURI_INVOKE("ssh_credentials_overview")),
 	remoteList: (repoId: string) => typedError<RemoteInfo[], EgError_Serialize>(__TAURI_INVOKE("remote_list", { repoId })),
 	/**  Adds a remote (R-24); the summary refreshes via fs-watch. */
 	remoteAdd: (repoId: string, name: string, url: string) => typedError<null, EgError_Serialize>(__TAURI_INVOKE("remote_add", { repoId, name, url })),
@@ -675,6 +680,82 @@ export type ResetOutcome = {
 export type SelectedHunk = {
 	hunkIndex: number,
 	lineIndexes: number[],
+};
+
+/**
+ *  Status of the local ssh-agent and the keys it currently holds. Computed
+ *  once per `ssh_credentialsOverview()` IPC call from the backend; the UI
+ *  treats `running = false` as "tell the user to start their agent".
+ */
+export type SshAgentStatus = {
+	/**
+	 *  True when an ssh-agent socket is reachable and `ssh-add -L` returned
+	 *  success. False covers every "agent missing / dead / wrong env"
+	 *  condition the user can fix by starting their agent.
+	 */
+	running: boolean,
+	/**
+	 *  Value of `SSH_AUTH_SOCK` at command time. Surfaced so the UI can
+	 *  show the actual path (an old leftover socket is a common reason the
+	 *  agent "isn't running" after a session reconnect).
+	 */
+	authSock: string | null,
+	/**  Keys currently loaded in the agent. Empty when `running` is false. */
+	keys: SshKeyInfo[],
+};
+
+/**
+ *  Read-only snapshot of the local SSH credential setup, returned by the
+ *  `ssh_credentials_overview` IPC command and shown by the
+ *  "管理凭据" section on the settings page. EasyGit never stores
+ *  credentials and never reads private keys — this is purely a status
+ *  report so the user can tell whether their agent is up and which keys
+ *  are available.
+ */
+export type SshCredentialsOverview = {
+	agent: SshAgentStatus,
+	publicKeys: SshPublicKey[],
+	/**
+	 *  Resolved home directory (parent of `.ssh/`). `None` when no home
+	 *  directory is discoverable on the platform.
+	 */
+	homeDir: string | null,
+	/**  True when `~/.ssh` exists. Drives the UI's empty-state message. */
+	sshDirPresent: boolean,
+};
+
+/**
+ *  One key reported by either `ssh-add -L` (the live agent) or
+ *  `ssh-keygen -lf <file>.pub` (a public key file on disk). Private key
+ *  material is never read or returned — the type deliberately does not have
+ *  a place to carry it.
+ */
+export type SshKeyInfo = {
+	/**
+	 *  Output of `ssh-keygen -lf`: SHA256 for modern keys, legacy MD5 for
+	 *  older ones. We keep whatever the tools report so the UI does not
+	 *  have to second-guess.
+	 */
+	fingerprint: string,
+	/**  Trailing comment from the .pub line, often `user@host`. */
+	comment: string,
+	/**
+	 *  Algorithm and bits as printed by the tools, e.g. `ED25519`,
+	 *  `RSA 4096`, `ECDSA 256`.
+	 */
+	keyType: string,
+};
+
+/**
+ *  One public key file under the user's `~/.ssh/` directory. The matching
+ *  private key is never opened.
+ */
+export type SshPublicKey = {
+	/**  Absolute path to the `.pub` file. */
+	path: string,
+	fingerprint: string,
+	comment: string,
+	keyType: string,
 };
 
 /**  A repository living on a remote host, addressed over SSH. */

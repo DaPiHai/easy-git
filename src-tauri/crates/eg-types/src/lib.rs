@@ -9,7 +9,10 @@ pub mod ssh;
 
 pub use error::EgError;
 
-pub use ssh::{is_ssh_location, parse_ssh_target, RepoLocation, SshTarget, DEFAULT_SSH_PORT};
+pub use ssh::{
+    is_ssh_location, parse_ssh_target, RepoLocation, SshAgentStatus, SshCredentialsOverview,
+    SshKeyInfo, SshPublicKey, SshTarget, DEFAULT_SSH_PORT,
+};
 
 mod dto;
 

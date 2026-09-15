@@ -8,8 +8,8 @@ use eg_types::{
     AppVersion, BranchInfo, CommitDetail, CommitOutcome, CommitRequest, ConfigScope, ConflictFile,
     DiffRequest, DiffResponse, EgError, EnvStatus, IgnoreMode, LogFilter, LogPage, MergeOutcome,
     MergeState, PushCredentials, RemoteInfo, RepoSummary, ResetMode, ResetOutcome,
-    StageLinesRequest, StageMode, StashEntry, StatusReport, SyncStrategy, TagInfo, TimelineEntry,
-    UndoRedoState,
+    SshCredentialsOverview, StageLinesRequest, StageMode, StashEntry, StatusReport, SyncStrategy,
+    TagInfo, TimelineEntry, UndoRedoState,
 };
 use tauri::{AppHandle, State};
 use tauri_specta::Event;
@@ -793,6 +793,14 @@ pub async fn ssh_browse_dir(location: String, dir: String) -> Result<Vec<String>
     // The browse dir overrides the location path when the user navigates.
     target.path = dir.clone();
     run_blocking(move || eg_git_core::ssh::browse_dir(&target, &dir, None)).await
+}
+
+/// Reads the local ssh-agent state and `~/.ssh/*.pub` for the settings
+/// "管理凭据" section. Read-only — no private keys, no remote calls.
+#[tauri::command]
+#[specta::specta]
+pub async fn ssh_credentials_overview() -> Result<SshCredentialsOverview, EgError> {
+    run_blocking(eg_git_core::ssh::ssh_credentials_overview).await
 }
 
 #[tauri::command]

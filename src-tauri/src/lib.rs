@@ -81,6 +81,7 @@ pub fn run() {
             commands::ssh_test_connection,
             commands::ssh_browse_dir,
             commands::ssh_init_repo,
+            commands::ssh_credentials_overview,
             commands::remote_list,
             commands::remote_add,
             commands::remote_rename,

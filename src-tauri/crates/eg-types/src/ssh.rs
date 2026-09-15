@@ -15,6 +15,72 @@ use std::path::PathBuf;
 /// Default SSH port, used when the user does not specify one.
 pub const DEFAULT_SSH_PORT: u16 = 22;
 
+/// One key reported by either `ssh-add -L` (the live agent) or
+/// `ssh-keygen -lf <file>.pub` (a public key file on disk). Private key
+/// material is never read or returned — the type deliberately does not have
+/// a place to carry it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SshKeyInfo {
+    /// Output of `ssh-keygen -lf`: SHA256 for modern keys, legacy MD5 for
+    /// older ones. We keep whatever the tools report so the UI does not
+    /// have to second-guess.
+    pub fingerprint: String,
+    /// Trailing comment from the .pub line, often `user@host`.
+    pub comment: String,
+    /// Algorithm and bits as printed by the tools, e.g. `ED25519`,
+    /// `RSA 4096`, `ECDSA 256`.
+    pub key_type: String,
+}
+
+/// Status of the local ssh-agent and the keys it currently holds. Computed
+/// once per `ssh_credentialsOverview()` IPC call from the backend; the UI
+/// treats `running = false` as "tell the user to start their agent".
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SshAgentStatus {
+    /// True when an ssh-agent socket is reachable and `ssh-add -L` returned
+    /// success. False covers every "agent missing / dead / wrong env"
+    /// condition the user can fix by starting their agent.
+    pub running: bool,
+    /// Value of `SSH_AUTH_SOCK` at command time. Surfaced so the UI can
+    /// show the actual path (an old leftover socket is a common reason the
+    /// agent "isn't running" after a session reconnect).
+    pub auth_sock: Option<String>,
+    /// Keys currently loaded in the agent. Empty when `running` is false.
+    pub keys: Vec<SshKeyInfo>,
+}
+
+/// One public key file under the user's `~/.ssh/` directory. The matching
+/// private key is never opened.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SshPublicKey {
+    /// Absolute path to the `.pub` file.
+    pub path: String,
+    pub fingerprint: String,
+    pub comment: String,
+    pub key_type: String,
+}
+
+/// Read-only snapshot of the local SSH credential setup, returned by the
+/// `ssh_credentials_overview` IPC command and shown by the
+/// "管理凭据" section on the settings page. EasyGit never stores
+/// credentials and never reads private keys — this is purely a status
+/// report so the user can tell whether their agent is up and which keys
+/// are available.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SshCredentialsOverview {
+    pub agent: SshAgentStatus,
+    pub public_keys: Vec<SshPublicKey>,
+    /// Resolved home directory (parent of `.ssh/`). `None` when no home
+    /// directory is discoverable on the platform.
+    pub home_dir: Option<String>,
+    /// True when `~/.ssh` exists. Drives the UI's empty-state message.
+    pub ssh_dir_present: bool,
+}
+
 /// A repository living on a remote host, addressed over SSH.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]

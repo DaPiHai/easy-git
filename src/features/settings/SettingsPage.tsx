@@ -7,11 +7,14 @@ import { SHORTCUTS } from '../../lib/shortcuts';
 import { useUiStore } from '../../stores/uiStore';
 import { toast } from '../../stores/toastStore';
 import { ThemeToggle } from '../shell/ThemeToggle';
+import { CredentialsSection } from './CredentialsSection';
 import { LogsPanel } from './LogsPanel';
 
 /**
  * Settings page v1 (m1-plan F-14, P1): Git identity (global config), theme
- * and the 简洁/专家 mode preference. Network & credentials sections land later.
+ * and the 简洁/专家 mode preference, plus a read-only SSH credential
+ * overview reachable from the `open-credentials` hint (SSH 认证失败 →
+ * 管理凭据 button).
  */
 export function SettingsPage() {
   return (
@@ -19,6 +22,7 @@ export function SettingsPage() {
       <div className="mx-auto max-w-[720px] px-eg-5 py-eg-5">
         <h1 className="text-title font-semibold text-ink">{t('settings.title')}</h1>
         <IdentitySection />
+        <CredentialsSection />
         <AppearanceSection />
         <ShortcutsSection />
         <LogsPanel />

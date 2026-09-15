@@ -110,6 +110,15 @@ interface UiState {
   sshDialogOpen: boolean;
   setSshDialogOpen: (open: boolean) => void;
 
+  /**
+   * One-shot flag set by the `open-credentials` hint (TDD §6 / SSH 认证失败).
+   * The settings page scrolls to and highlights the credentials section
+   * while this is true, then clears it back to false after a short beat so
+   * the same toast can fire repeatedly without sticking the highlight on.
+   */
+  credentialsHighlighted: boolean;
+  setCredentialsHighlighted: (highlight: boolean) => void;
+
   /** Populated via IPC once the Tauri shell is up; null in browser previews. */
   appVersion: AppVersionInfo | null;
   fetchAppVersion: () => Promise<void>;
@@ -192,6 +201,9 @@ export const useUiStore = create<UiState>()((set, get) => {
 
     sshDialogOpen: false,
     setSshDialogOpen: (open) => set({ sshDialogOpen: open }),
+
+    credentialsHighlighted: false,
+    setCredentialsHighlighted: (highlight) => set({ credentialsHighlighted: highlight }),
 
     appVersion: null,
     fetchAppVersion: async () => {

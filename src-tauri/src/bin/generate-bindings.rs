@@ -61,6 +61,7 @@ fn main() {
             easy_git::commands::ssh_test_connection,
             easy_git::commands::ssh_init_repo,
             easy_git::commands::ssh_browse_dir,
+            easy_git::commands::ssh_credentials_overview,
             easy_git::commands::remote_list,
             easy_git::commands::remote_add,
             easy_git::commands::remote_rename,

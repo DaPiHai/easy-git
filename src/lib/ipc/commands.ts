@@ -32,6 +32,7 @@ import {
   type ResetMode,
   type ResetOutcome,
   type RemoteInfo,
+  type SshCredentialsOverview,
   type StageLinesRequest,
   type StageMode,
   type StatusReport,
@@ -90,6 +91,8 @@ export type {
   DiffLineKind,
   DiffSourceKind,
   SelectedHunk,
+  SshCredentialsOverview,
+  SshKeyInfo,
 } from './bindings';
 export type { EgErrorLike, HumanizedError } from './errors';
 export { events } from './bindings';
@@ -605,6 +608,16 @@ export async function initSshRepo(location: string): Promise<void> {
 /** Lists a directory on an SSH host (SSH wizard remote browser). */
 export async function browseSshDir(location: string, dir: string): Promise<string[]> {
   const r = await commands.sshBrowseDir(location, dir);
+  if (r.status === 'error') throw r.error;
+  return r.data;
+}
+
+/**
+ * Snapshots the local ssh-agent state and `~/.ssh/*.pub`. Read-only — the
+ * backend never reads private keys or talks to remote hosts.
+ */
+export async function getSshCredentialsOverview(): Promise<SshCredentialsOverview> {
+  const r = await commands.sshCredentialsOverview();
   if (r.status === 'error') throw r.error;
   return r.data;
 }

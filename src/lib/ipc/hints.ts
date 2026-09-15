@@ -31,9 +31,17 @@ export function dispatchHint(action: string): void {
       ui.setSwitcherOpen(true);
       break;
     case 'open-settings-network':
-    case 'open-credentials':
-      // 网络与凭据分区尚未落地（SettingsPage v1），先落到设置页顶部。
+      // 网络设置分区尚未落地，先落到设置页顶部。
       ui.setView('settings');
+      break;
+    case 'open-credentials':
+      // 跳到设置页并高亮"身份凭证"分区，让 SSH 认证失败的用户有明确
+      // 落点；高亮状态 2.5 秒后自动清除，不影响下一次触发。
+      ui.setView('settings');
+      ui.setCredentialsHighlighted(true);
+      if (typeof window !== 'undefined') {
+        window.setTimeout(() => ui.setCredentialsHighlighted(false), 2500);
+      }
       break;
     case 'open-git-download':
       openUrl(GIT_DOWNLOAD_URL).catch(() => appLog.warn('hints', `openUrl failed for ${action}`));

@@ -24,7 +24,9 @@ use std::io::{BufRead, BufReader};
 use std::sync::mpsc::Sender;
 use std::time::Duration;
 
-use eg_types::{EgError, SshTarget};
+use eg_types::{
+    EgError, SshAgentStatus, SshCredentialsOverview, SshKeyInfo, SshPublicKey, SshTarget,
+};
 
 use super::remote::SyncProgress;
 pub(crate) use super::remote::{CLI_TIMEOUT_NETWORK, CLI_TIMEOUT_QUICK};
@@ -765,5 +767,270 @@ mod tests {
             }
             other => panic!("expected SshNotARepo, got {other:?}"),
         }
+    }
+}
+
+// --- SSH credentials overview (settings "管理凭据") ---------------------
+//
+// Reads the local ssh-agent state and `~/.ssh/*.pub`. Read-only: private
+// keys are never opened, no new data crosses the wire, no env var (besides
+// what the user already set) is consulted. The command always succeeds —
+// missing agent or absent `~/.ssh` are first-class results, not errors.
+
+/// Hard timeout for any single local probe (`ssh-add -L`, `ssh-keygen -lf`).
+/// Both should respond in milliseconds; 5 s covers a wedged agent without
+/// freezing the settings page.
+const OVERVIEW_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Resolves the user's home directory without pulling in a `dirs` dependency.
+fn user_home() -> Option<std::path::PathBuf> {
+    #[cfg(windows)]
+    {
+        std::env::var_os("USERPROFILE").map(std::path::PathBuf::from)
+    }
+    #[cfg(not(windows))]
+    {
+        std::env::var_os("HOME").map(std::path::PathBuf::from)
+    }
+}
+
+/// Snapshots the local SSH credential setup for the settings page. Safe to
+/// call from the IPC thread: every subprocess is bounded by
+/// [`OVERVIEW_TIMEOUT`] and isolated failures (agent down, missing `ssh-add`
+/// or `ssh-keygen` binary, unreadable `~/.ssh`) degrade to empty fields
+/// instead of bubbling up.
+pub fn ssh_credentials_overview() -> Result<SshCredentialsOverview, EgError> {
+    let home = user_home();
+    let ssh_dir = home.as_ref().map(|h| h.join(".ssh"));
+    let ssh_dir_present = ssh_dir.as_ref().is_some_and(|p| p.is_dir());
+
+    let agent = read_agent_status();
+    let public_keys = if ssh_dir_present {
+        ssh_dir.as_deref().map(list_public_keys).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+
+    Ok(SshCredentialsOverview {
+        agent,
+        public_keys,
+        home_dir: home.map(|p| p.to_string_lossy().into_owned()),
+        ssh_dir_present,
+    })
+}
+
+fn read_agent_status() -> SshAgentStatus {
+    let auth_sock = std::env::var("SSH_AUTH_SOCK")
+        .ok()
+        .filter(|s| !s.is_empty());
+    match run_local_with_timeout("ssh-add", &["-L"], OVERVIEW_TIMEOUT) {
+        Ok((stdout, _, true)) => SshAgentStatus {
+            running: true,
+            auth_sock,
+            keys: parse_ssh_add_lines(&stdout),
+        },
+        // Agent not running, missing binary, or any other failure: surface
+        // it as "not running" so the UI's fix instructions are honest.
+        _ => SshAgentStatus {
+            running: false,
+            auth_sock,
+            keys: Vec::new(),
+        },
+    }
+}
+
+fn list_public_keys(ssh_dir: &std::path::Path) -> Vec<SshPublicKey> {
+    let entries = match std::fs::read_dir(ssh_dir) {
+        Ok(it) => it,
+        Err(_) => return Vec::new(),
+    };
+    let mut out = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        // Only `.pub` files. A private key (e.g. `id_ed25519`) must never
+        // be opened, even with `ssh-keygen -lf` on the file directly.
+        if path.extension().and_then(|s| s.to_str()) != Some("pub") {
+            continue;
+        }
+        let path_str = path.to_string_lossy().into_owned();
+        let (stdout, _, ok) =
+            match run_local_with_timeout("ssh-keygen", &["-lf", &path_str], OVERVIEW_TIMEOUT) {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
+        if !ok {
+            continue;
+        }
+        if let Some(info) = parse_ssh_keygen_line(&stdout) {
+            out.push(SshPublicKey {
+                path: path_str,
+                fingerprint: info.fingerprint,
+                comment: info.comment,
+                key_type: info.key_type,
+            });
+        }
+    }
+    // Stable order so the UI doesn't reshuffle between refreshes.
+    out.sort_by(|a, b| a.path.cmp(&b.path));
+    out
+}
+
+/// Parses one `ssh-keygen -lf <file>.pub` line.
+///
+/// Real output (note the trailing key type in parens):
+/// ```text
+/// 256 SHA256:yqXgIItLIlkrJFafqrRjl7oRIKdiIRlld/PK9zSGHHU comment-test (ED25519)
+/// ```
+/// Bits before the fingerprint and the `(TYPE)` tail are kept verbatim in
+/// `key_type` so the UI can show e.g. `RSA 4096` without re-deriving it.
+fn parse_ssh_keygen_line(stdout: &str) -> Option<SshKeyInfo> {
+    // Trim the trailing newline; fields are whitespace-separated.
+    let line = stdout.trim();
+    let mut parts = line.splitn(4, char::is_whitespace);
+    let _bits = parts.next()?;
+    let fingerprint = parts.next()?.to_string();
+    let comment = parts.next().unwrap_or_default().to_string();
+    let key_type = if let Some(rest) = parts.next() {
+        // Strip the trailing "(ED25519)" or "(RSA)" parens if present —
+        // older ssh-keygen sometimes omits them.
+        rest.trim()
+            .trim_matches(|c| c == '(' || c == ')')
+            .to_string()
+    } else {
+        String::new()
+    };
+    if fingerprint.is_empty() {
+        return None;
+    }
+    Some(SshKeyInfo {
+        fingerprint,
+        comment,
+        key_type,
+    })
+}
+
+/// Parses one `ssh-add -L` line. Format is identical to `ssh-keygen -lf`.
+fn parse_ssh_add_lines(stdout: &str) -> Vec<SshKeyInfo> {
+    stdout.lines().filter_map(parse_ssh_keygen_line).collect()
+}
+
+/// Spawns a local command with stdout+stderr captured and stdin closed,
+/// bounded by `timeout`. Returns `(stdout, stderr, success)`. Spawn errors
+/// (binary not found, etc.) come back as `Err(())` so callers can degrade
+/// to empty results without poisoning the whole overview with an
+/// `EgError`.
+fn run_local_with_timeout(
+    program: &str,
+    args: &[&str],
+    timeout: Duration,
+) -> Result<(String, String, bool), ()> {
+    use std::io::{BufRead, BufReader};
+    use std::process::Stdio;
+
+    let mut child = crate::process::hidden_command(program)
+        .args(args.iter().copied())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .stdin(Stdio::null())
+        .spawn()
+        .map_err(|_| ())?;
+
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    let stdout_handle = stdout.map(|s| {
+        std::thread::spawn(move || {
+            let mut buf = String::new();
+            for line in BufReader::new(s).lines().map_while(Result::ok) {
+                buf.push_str(&line);
+                buf.push('\n');
+            }
+            buf
+        })
+    });
+    let stderr_handle = stderr.map(|s| {
+        std::thread::spawn(move || {
+            let mut buf = String::new();
+            for line in BufReader::new(s).lines().map_while(Result::ok) {
+                buf.push_str(&line);
+                buf.push('\n');
+            }
+            buf
+        })
+    });
+
+    let started = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let stdout_text = stdout_handle
+                    .and_then(|h| h.join().ok())
+                    .unwrap_or_default();
+                let stderr_text = stderr_handle
+                    .and_then(|h| h.join().ok())
+                    .unwrap_or_default();
+                return Ok((stdout_text, stderr_text, status.success()));
+            }
+            Ok(None) => {
+                if started.elapsed() >= timeout {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(());
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(_) => return Err(()),
+        }
+    }
+}
+
+#[cfg(test)]
+mod credentials_overview_tests {
+    use super::*;
+
+    #[test]
+    fn parses_a_well_formed_ssh_keygen_line() {
+        // What `ssh-keygen -lf id_ed25519.pub` prints.
+        let line =
+            "256 SHA256:yqXgIItLIlkrJFafqrRjl7oRIKdiIRlld/PK9zSGHHU comment-test (ED25519)\n";
+        let info = parse_ssh_keygen_line(line).expect("must parse");
+        assert_eq!(
+            info.fingerprint,
+            "SHA256:yqXgIItLIlkrJFafqrRjl7oRIKdiIRlld/PK9zSGHHU"
+        );
+        assert_eq!(info.comment, "comment-test");
+        assert_eq!(info.key_type, "ED25519");
+    }
+
+    #[test]
+    fn parses_rsa_with_bits_in_the_type_field() {
+        let line = "4096 SHA256:tI0bRq8Wi4k06dQ7iY0WnP9gPjF1N3K2aBcDeFgHiJk user@host (RSA)\n";
+        let info = parse_ssh_keygen_line(line).expect("must parse");
+        assert_eq!(info.key_type, "RSA");
+    }
+
+    #[test]
+    fn parses_a_line_without_key_type_parens() {
+        // Older ssh-keygen and some 3rd-party tools omit the (TYPE) tail.
+        let line = "256 SHA256:abcd1234 legacy-key\n";
+        let info = parse_ssh_keygen_line(line).expect("must parse");
+        assert_eq!(info.fingerprint, "SHA256:abcd1234");
+        assert_eq!(info.comment, "legacy-key");
+        assert_eq!(info.key_type, "");
+    }
+
+    #[test]
+    fn rejects_a_blank_line() {
+        assert!(parse_ssh_keygen_line("").is_none());
+        assert!(parse_ssh_keygen_line("\n\n").is_none());
+    }
+
+    #[test]
+    fn parse_ssh_add_lines_groups_multiple_keys() {
+        let stdout = "256 SHA256:aaaa user1@host1 (ED25519)\n\
+                       4096 SHA256:bbbb user2@host2 (RSA)\n";
+        let keys = parse_ssh_add_lines(stdout);
+        assert_eq!(keys.len(), 2);
+        assert_eq!(keys[0].comment, "user1@host1");
+        assert_eq!(keys[1].key_type, "RSA");
     }
 }
