@@ -15,6 +15,14 @@ use tempfile::TempDir;
 fn init_repo() -> (TempDir, Repository) {
     let dir = TempDir::new().expect("temp dir");
     let repo = Repository::init(dir.path()).expect("git init");
+    // Pin LF: `Repository::init` inherits the machine's global git config, so a
+    // Windows box with `core.autocrlf=true` makes every checkout rewrite LF as
+    // CRLF — byte-exact content assertions then compare "x\r\n" to "x\n". CI on
+    // Linux/macOS never sees this, so the fixture has to opt out explicitly.
+    repo.config()
+        .expect("repo config")
+        .set_bool("core.autocrlf", false)
+        .expect("pin core.autocrlf=false for the test repo");
     (dir, repo)
 }
 

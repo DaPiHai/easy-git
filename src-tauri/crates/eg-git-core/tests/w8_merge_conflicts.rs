@@ -16,6 +16,10 @@ fn init_repo() -> (TempDir, Repository) {
     // libgit2 defaults to master; EasyGit fixtures use main.
     repo.set_head("refs/heads/main").unwrap();
     let mut config = repo.config().unwrap();
+    // Pin LF (see w2_repo_foundation.rs): never inherit the machine's
+    // `core.autocrlf`, or checkouts come back CRLF and byte-exact content
+    // assertions fail on Windows only.
+    config.set_bool("core.autocrlf", false).unwrap();
     config.set_str("user.name", "张三").unwrap();
     config.set_str("user.email", "z@ex.com").unwrap();
     (dir, repo)

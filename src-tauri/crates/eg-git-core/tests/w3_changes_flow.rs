@@ -14,6 +14,16 @@ use tempfile::TempDir;
 fn init_repo() -> (TempDir, Repository) {
     let dir = TempDir::new().expect("temp dir");
     let repo = Repository::init(dir.path()).expect("git init");
+    // Pin line endings locally: `Repository::init` inherits the developer's
+    // global/system git config, so on a Windows box with `core.autocrlf=true`
+    // every checkout rewrites LF as CRLF and the "undo restores the exact
+    // content" assertions below compare "x\r\n" against "x\n". The product
+    // behaviour is fine — it is the fixture that must not depend on the
+    // machine it runs on (CI on Linux/macOS never sees this).
+    repo.config()
+        .expect("repo config")
+        .set_bool("core.autocrlf", false)
+        .expect("pin core.autocrlf=false for the test repo");
     (dir, repo)
 }
 

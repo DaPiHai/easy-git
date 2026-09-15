@@ -16,6 +16,10 @@ fn init_repo() -> (TempDir, Repository) {
     let repo = Repository::init(dir.path()).expect("git init");
     repo.set_head("refs/heads/main").unwrap();
     let mut config = repo.config().unwrap();
+    // Pin LF (see w2_repo_foundation.rs): never inherit the machine's
+    // `core.autocrlf`, or checkouts come back CRLF and byte-exact content
+    // assertions fail on Windows only.
+    config.set_bool("core.autocrlf", false).unwrap();
     config.set_str("user.name", "张三").unwrap();
     config.set_str("user.email", "z@ex.com").unwrap();
     (dir, repo)
@@ -103,6 +107,11 @@ fn fixture_with_origin() -> Fixture {
         ])
         .output()
         .expect("clone");
+    // Pin LF (see w2_repo_foundation.rs): this clone is made by the real git
+    // CLI, so it inherits the machine's `core.autocrlf` — on Windows that turns
+    // every later checkout (fetch/pull) into CRLF and breaks the byte-exact
+    // content assertions below. `init_repo()` cannot help here; pin it inline.
+    git(&work_path, &["config", "core.autocrlf", "false"]);
     // Empty clone warns but succeeds; make an initial commit and push it.
     git(&work_path, &["config", "user.name", "张三"]);
     git(&work_path, &["config", "user.email", "z@ex.com"]);

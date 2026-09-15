@@ -12,6 +12,13 @@ use tempfile::TempDir;
 fn init_repo() -> (TempDir, Repository) {
     let dir = TempDir::new().expect("temp dir");
     let repo = Repository::init(dir.path()).expect("git init");
+    // Pin LF (see w2_repo_foundation.rs): never inherit the machine's
+    // `core.autocrlf`, or checkouts come back CRLF and byte-exact content
+    // assertions fail on Windows only.
+    repo.config()
+        .expect("repo config")
+        .set_bool("core.autocrlf", false)
+        .expect("pin core.autocrlf=false for the test repo");
     (dir, repo)
 }
 
