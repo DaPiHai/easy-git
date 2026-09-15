@@ -1,4 +1,4 @@
-import { FolderGit2, FolderOpen, FolderPlus } from 'lucide-react';
+import { FolderGit2, FolderOpen, FolderPlus, Server } from 'lucide-react';
 import { Button } from '../../components';
 import { t } from '../../lib/i18n';
 import { useRepoStore } from '../../stores/repoStore';
@@ -27,7 +27,7 @@ export function OpenRepoWizard() {
           <p className="mt-1 text-secondary text-ink-subtle">{t('wizard.desc')}</p>
         </div>
 
-        <div className="grid grid-cols-1 gap-eg-3 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-eg-3 sm:grid-cols-2 lg:grid-cols-4">
           <WizardCard
             icon={FolderOpen}
             title={t('wizard.open')}
@@ -48,6 +48,13 @@ export function OpenRepoWizard() {
             description={t('wizard.clone.desc')}
             onClick={() => useUiStore.getState().setCloneDialogOpen(true)}
             testId="wizard-clone"
+          />
+          <WizardCard
+            icon={Server}
+            title={t('wizard.ssh')}
+            description={t('wizard.ssh.desc')}
+            onClick={() => useUiStore.getState().setSshDialogOpen(true)}
+            testId="wizard-ssh"
           />
         </div>
 

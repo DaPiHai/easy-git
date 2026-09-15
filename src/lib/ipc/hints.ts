@@ -38,6 +38,13 @@ export function dispatchHint(action: string): void {
     case 'open-git-download':
       openUrl(GIT_DOWNLOAD_URL).catch(() => appLog.warn('hints', `openUrl failed for ${action}`));
       break;
+    case 'init-ssh-repo':
+      // The SSH dialog owns this action: it carries the URI + 存在性 in the
+      // error's target field, so opening the repo picker here would lose
+      // context. The dialog listens for the action and runs its own flow.
+      // Fall through to a log line if no consumer is wired (test/runtime gap).
+      appLog.info('hints', `init-ssh-repo requested without an active dialog`);
+      break;
     default:
       appLog.warn('hints', `no handler for hint action: ${action}`);
   }

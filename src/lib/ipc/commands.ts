@@ -144,6 +144,7 @@ const BUSY_LABELS: Partial<Record<string, MessageKey>> = {
   pushRemote: 'busy.push',
   remoteTest: 'busy.remote.test',
   cloneRepo: 'busy.clone',
+  testSshConnection: 'busy.ssh.test',
   remoteAdd: 'busy.remote.add',
   remoteRename: 'busy.remote.rename',
   remoteRemove: 'busy.remote.remove',
@@ -558,6 +559,52 @@ export async function cloneRepo(
   credentials?: PushCredentials | null,
 ): Promise<RepoSummary> {
   const r = await tracked('cloneRepo', () => commands.repoClone(url, path, credentials ?? null));
+  if (r.status === 'error') throw r.error;
+  return r.data;
+}
+
+/** True when a repo path is an SSH remote-host coordinate, not a local dir. */
+export function isSshRepoPath(path: string): boolean {
+  const text = path.trim();
+  if (text.startsWith('ssh://')) return true;
+  // scp-like `user@host:/abs/path`, excluding Windows drive paths (`C:\…`).
+  if (/^[a-zA-Z]:[\\/]/.test(text) || text.includes('://')) return false;
+  const colon = text.indexOf(':');
+  if (colon < 0) return false;
+  const host = text.slice(0, colon);
+  const rest = text.slice(colon + 1);
+  return (
+    host.length > 0 &&
+    !host.includes('/') &&
+    !host.includes('\\') &&
+    (rest.startsWith('/') || rest.startsWith('~/') || rest === '~')
+  );
+}
+
+/**
+ * Tests an SSH host connection without opening a repository (SSH wizard).
+ * Returns the canonical `ssh://…` URI on success; throws the flat EgError
+ * (auth/network) otherwise.
+ */
+export async function testSshConnection(location: string): Promise<string> {
+  const r = await tracked('testSshConnection', () => commands.sshTestConnection(location));
+  if (r.status === 'error') throw r.error;
+  return r.data;
+}
+
+/**
+ * Runs `git init` on an SSH host at `location` (SSH wizard recovery flow).
+ * Offered only when `repo_open` rejects the path with `SshNotARepo` and the
+ * directory exists — a missing path stays an error.
+ */
+export async function initSshRepo(location: string): Promise<void> {
+  const r = await commands.sshInitRepo(location);
+  if (r.status === 'error') throw r.error;
+}
+
+/** Lists a directory on an SSH host (SSH wizard remote browser). */
+export async function browseSshDir(location: string, dir: string): Promise<string[]> {
+  const r = await commands.sshBrowseDir(location, dir);
   if (r.status === 'error') throw r.error;
   return r.data;
 }

@@ -3,6 +3,7 @@ import { GitBranch, GitCommitHorizontal, GitGraph, Search, Tag } from 'lucide-re
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Dialog, EmptyState, LoadingBar } from '../../components';
 import { t } from '../../lib/i18n';
+import { useIsSshActive } from '../../lib/useSshRepo';
 import { authorInitial, formatRelativeTime } from '../../lib/time';
 import type { CommitLogEntry } from '../../lib/ipc/commands';
 import { useHistoryStore } from '../../stores/historyStore';
@@ -162,6 +163,9 @@ function CommitList() {
   const revert = useMergeStore((s) => s.revert);
   const reset = useMergeStore((s) => s.reset);
   const undoOperation = useRepoStore((s) => s.undoOperation);
+  // Remote-host repos disable resets by policy (dialog-level guard backs the
+  // hidden context-menu entries).
+  const isSshPage = useIsSshActive();
   const [hardResetAt, setHardResetAt] = useState<CommitLogEntry | null>(null);
 
   const onRevert = (oid: string) => {
@@ -313,6 +317,8 @@ function CommitList() {
             <Button
               variant="danger"
               data-testid="reset-hard-confirm"
+              disabled={isSshPage}
+              title={isSshPage ? t('remote.disabledOnSsh') : undefined}
               onClick={() => {
                 const entry = hardResetAt;
                 setHardResetAt(null);
@@ -405,6 +411,9 @@ function CommitRow({
   onResetMixed: () => void;
   onResetHard: () => void;
 }) {
+  // Remote-host repos disable resets by policy (no snapshot safety net);
+  // revert (a new commit) stays available.
+  const isSsh = useIsSshActive();
   return (
     <ContextMenu.Root modal={false}>
       <ContextMenu.Trigger asChild>
@@ -451,23 +460,30 @@ function CommitRow({
           <ContextMenu.Item className={menuItemClass} onSelect={onRevert}>
             {t('history.menu.revert')}
           </ContextMenu.Item>
-          <ContextMenu.Separator className="my-1 h-px bg-hairline" />
-          <ContextMenu.Sub>
-            <ContextMenu.SubTrigger className={menuItemClass}>
-              {t('history.menu.resetTo')}
-              <span className="ml-auto text-caption text-ink-tertiary">›</span>
-            </ContextMenu.SubTrigger>
-            <ContextMenu.Portal>
-              <ContextMenu.SubContent className={menuItemContentClass}>
-                <ContextMenu.Item className={menuItemClass} onSelect={onResetMixed}>
-                  {t('history.reset.mixed')}
-                </ContextMenu.Item>
-                <ContextMenu.Item className={`${menuItemClass} text-danger`} onSelect={onResetHard}>
-                  {t('history.reset.hard')}
-                </ContextMenu.Item>
-              </ContextMenu.SubContent>
-            </ContextMenu.Portal>
-          </ContextMenu.Sub>
+          {!isSsh ? (
+            <>
+              <ContextMenu.Separator className="my-1 h-px bg-hairline" />
+              <ContextMenu.Sub>
+                <ContextMenu.SubTrigger className={menuItemClass}>
+                  {t('history.menu.resetTo')}
+                  <span className="ml-auto text-caption text-ink-tertiary">›</span>
+                </ContextMenu.SubTrigger>
+                <ContextMenu.Portal>
+                  <ContextMenu.SubContent className={menuItemContentClass}>
+                    <ContextMenu.Item className={menuItemClass} onSelect={onResetMixed}>
+                      {t('history.reset.mixed')}
+                    </ContextMenu.Item>
+                    <ContextMenu.Item
+                      className={`${menuItemClass} text-danger`}
+                      onSelect={onResetHard}
+                    >
+                      {t('history.reset.hard')}
+                    </ContextMenu.Item>
+                  </ContextMenu.SubContent>
+                </ContextMenu.Portal>
+              </ContextMenu.Sub>
+            </>
+          ) : null}
         </ContextMenu.Content>
       </ContextMenu.Portal>
     </ContextMenu.Root>

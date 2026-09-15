@@ -14,7 +14,7 @@ beforeEach(() => {
 });
 
 describe('OpenRepoWizard', () => {
-  it('renders the three entries; clone card raises the global 克隆 dialog (W9)', async () => {
+  it('renders the four entries; clone card raises the global 克隆 dialog (W9)', async () => {
     const user = userEvent.setup();
     render(<OpenRepoWizard />);
     expect(screen.getByText('打开本地仓库')).toBeInTheDocument();
@@ -24,6 +24,16 @@ describe('OpenRepoWizard', () => {
     await user.click(clone);
     // The dialog itself is mounted at AppShell level (sidebar can open it too).
     expect(useUiStore.getState().cloneDialogOpen).toBe(true);
+  });
+
+  it('renders the SSH card; clicking it raises the SSH dialog', async () => {
+    const user = userEvent.setup();
+    useUiStore.setState({ sshDialogOpen: false });
+    render(<OpenRepoWizard />);
+    const ssh = screen.getByTestId('wizard-ssh');
+    expect(ssh).toBeEnabled();
+    await user.click(ssh);
+    expect(useUiStore.getState().sshDialogOpen).toBe(true);
   });
 
   it('lists recent repositories for one-click opening', async () => {

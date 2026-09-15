@@ -11,6 +11,7 @@ import { QuickSwitcher } from '../palette/QuickSwitcher';
 import { TopBar } from './TopBar';
 import { OpenRepoWizard } from '../repo/OpenRepoWizard';
 import { CloneDialog } from '../repo/CloneDialog';
+import { SshDialog } from '../repo/SshDialog';
 import { InitGitignoreDialog } from '../repo/InitGitignoreDialog';
 import { GitMissingNotice } from '../repo/GitMissingNotice';
 import { CredentialsDialog } from './CredentialsDialog';
@@ -103,6 +104,7 @@ export function AppShell() {
       <BottomBar />
       <QuickSwitcher />
       <CloneDialog />
+      <SshDialog />
       <InitGitignoreDialog />
       <CredentialsDialog />
       <ToastHost />

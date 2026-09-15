@@ -81,4 +81,29 @@ describe('humanizeEgError', () => {
     expect(result.detail).toBe('路径「/tmp/demo」不是一个 Git 仓库');
     expect(result.reason).toBe('invalid repository path');
   });
+
+  it('ssh_not_a_repo with exists=true offers an init action and reconstructs the URI', () => {
+    const result = humanizeEgError({
+      code: 'ssh_not_a_repo',
+      target: { host: '192.168.5.3', port: 22, user: 'hhdlj', path: '/home/hhdlj/easy-desktop' },
+      exists: true,
+      detail: 'fatal: not a git repository (or any of the parent directories): .git',
+    });
+    expect(result.title).toBe('远端路径不是 Git 仓库');
+    expect(result.detail).toContain('ssh://hhdlj@192.168.5.3/home/hhdlj/easy-desktop');
+    expect(result.detail).toContain('尚未初始化为 Git 仓库');
+    expect(result.hint?.action).toBe('init-ssh-repo');
+    expect(result.hint?.label).toBe('在此初始化仓库');
+    expect(result.reason).toContain('not a git repository');
+  });
+
+  it('ssh_not_a_repo with exists=false points at the picker, not init', () => {
+    const result = humanizeEgError({
+      code: 'ssh_not_a_repo',
+      target: { host: 'host', port: 22, user: null, path: '/srv/missing' },
+      exists: false,
+    });
+    expect(result.detail).toContain('不存在');
+    expect(result.hint?.action).toBe('open-repo-picker');
+  });
 });

@@ -106,6 +106,10 @@ interface UiState {
   cloneDialogOpen: boolean;
   setCloneDialogOpen: (open: boolean) => void;
 
+  /** SSH 远端仓库 dialog: host/port/user/path form + test + remote browser. */
+  sshDialogOpen: boolean;
+  setSshDialogOpen: (open: boolean) => void;
+
   /** Populated via IPC once the Tauri shell is up; null in browser previews. */
   appVersion: AppVersionInfo | null;
   fetchAppVersion: () => Promise<void>;
@@ -185,6 +189,9 @@ export const useUiStore = create<UiState>()((set, get) => {
 
     cloneDialogOpen: false,
     setCloneDialogOpen: (open) => set({ cloneDialogOpen: open }),
+
+    sshDialogOpen: false,
+    setSshDialogOpen: (open) => set({ sshDialogOpen: open }),
 
     appVersion: null,
     fetchAppVersion: async () => {

@@ -13,6 +13,8 @@ pub mod process;
 pub mod refs;
 pub mod remote;
 pub mod repo;
+pub mod ssh;
+pub mod ssh_backend;
 pub mod stash;
 pub mod status;
 pub mod timeline;

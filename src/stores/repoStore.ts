@@ -122,6 +122,8 @@ interface RepoState {
   dispose: () => void;
 
   openByPath: (path: string) => Promise<void>;
+  /** Same as `openByPath` but returns the summary and rethrows (dialogs). */
+  openByPathReturning: (path: string) => Promise<RepoSummary>;
   initAt: (path: string) => Promise<void>;
   pickAndOpen: () => Promise<void>;
   pickAndInit: () => Promise<void>;
@@ -228,14 +230,19 @@ export const useRepoStore = create<RepoState>()((set, get) => {
     openByPath: async (path) => {
       set({ error: null });
       try {
-        const summary = await openRepoIpc(path);
-        maybeOfferGitignore(summary);
-        set((s) => ({ repos: { ...s.repos, [summary.repoId]: summary } }));
-        putRecent(summary);
-        await get().activate(summary.repoId);
+        await get().openByPathReturning(path);
       } catch (error) {
         set({ error: humanize(error) });
       }
+    },
+
+    openByPathReturning: async (path) => {
+      const summary = await openRepoIpc(path);
+      maybeOfferGitignore(summary);
+      set((s) => ({ repos: { ...s.repos, [summary.repoId]: summary } }));
+      putRecent(summary);
+      await get().activate(summary.repoId);
+      return summary;
     },
 
     initAt: async (path) => {

@@ -4,6 +4,7 @@ import { Button, Dialog } from '../../components';
 import { t } from '../../lib/i18n';
 import { useRepoStore } from '../../stores/repoStore';
 import { useSyncStore } from '../../stores/syncStore';
+import { useIsSshActive } from '../../lib/useSshRepo';
 import { toast } from '../../stores/toastStore';
 
 /**
@@ -22,6 +23,8 @@ export function SyncButtons({ hasActiveRepo }: { hasActiveRepo: boolean }) {
   const undoOperation = useRepoStore((s) => s.undoOperation);
   const [divergedOpen, setDivergedOpen] = useState(false);
   const [forceOpen, setForceOpen] = useState(false);
+  // Remote-host repos disable force push by policy (no snapshot safety net).
+  const isSsh = useIsSshActive();
 
   const remote = remotes[0]?.name ?? 'origin';
   const branch = status?.branch ?? '';
@@ -35,9 +38,9 @@ export function SyncButtons({ hasActiveRepo }: { hasActiveRepo: boolean }) {
 
   const onPush = async () => {
     const result = await push(remote, branch, false);
-    // 'rejected' opens the 强推 dialog; 'auth' means the credential retry
-    // also failed (toast already shown); 'cancelled' is a quiet dismiss.
-    if (result === 'rejected') setForceOpen(true);
+    // 'rejected' opens the 强推 dialog — except on SSH remotes, where force
+    // push is disabled by policy (the backend refuses it outright).
+    if (result === 'rejected' && !isSsh) setForceOpen(true);
   };
 
   const onForcePush = async () => {
@@ -144,6 +147,8 @@ export function SyncButtons({ hasActiveRepo }: { hasActiveRepo: boolean }) {
             <Button
               variant="danger"
               loading={busy === 'push'}
+              disabled={isSsh}
+              title={isSsh ? t('remote.disabledOnSsh') : undefined}
               data-testid="push-force-confirm"
               onClick={() => void onForcePush()}
             >

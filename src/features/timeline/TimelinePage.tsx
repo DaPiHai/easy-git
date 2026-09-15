@@ -5,6 +5,7 @@ import { t } from '../../lib/i18n';
 import { formatRelativeTime } from '../../lib/time';
 import { useRepoStore } from '../../stores/repoStore';
 import { useSyncStore } from '../../stores/syncStore';
+import { useIsSshActive } from '../../lib/useSshRepo';
 
 const kindColors: Record<string, string> = {
   commit: 'bg-branch-1',
@@ -30,6 +31,8 @@ export function TimelinePage() {
   const restoreTo = useSyncStore((s) => s.restoreTo);
   const hasActiveRepo = useRepoStore((s) => s.activeId !== null);
   const [restoreAt, setRestoreAt] = useState<{ oid: string; short: string } | null>(null);
+  // Remote-host repos disable restore-to (hard reset without a snapshot net).
+  const isSsh = useIsSshActive();
 
   useEffect(() => {
     if (hasActiveRepo) void refreshTimeline();
@@ -81,7 +84,7 @@ export function TimelinePage() {
                   ) : null}
                   {entry.subject}
                 </span>
-                {entry.oid ? (
+                {entry.oid && !isSsh ? (
                   <>
                     <span className="shrink-0 font-mono text-mono text-ink-tertiary">
                       {entry.oid.slice(0, 7)}

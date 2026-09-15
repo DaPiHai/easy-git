@@ -7,6 +7,8 @@
 use serde::Serialize;
 use specta::Type;
 
+use crate::SshTarget;
+
 #[derive(Debug, Clone, Serialize, Type, thiserror::Error)]
 #[serde(tag = "code", rename_all = "snake_case")]
 pub enum EgError {
@@ -14,6 +16,16 @@ pub enum EgError {
     /// the underlying libgit2/IO message when there is one.
     RepoNotFound {
         path: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        detail: Option<String>,
+    },
+    /// SSH remote directory exists but is not a Git repository (and the user
+    /// has not initialized one yet). The frontend uses `exists` to offer a
+    /// guided `git init`; a missing path stays under `RepoNotFound` to avoid
+    /// inviting the user to create something that was simply mistyped.
+    SshNotARepo {
+        target: SshTarget,
+        exists: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
         detail: Option<String>,
     },
@@ -67,6 +79,10 @@ impl EgError {
     pub fn code(&self) -> &'static str {
         match self {
             EgError::RepoNotFound { .. } => "repo_not_found",
+            // Must match the serde tag specta derives from the variant name
+            // (`rename_all = "snake_case"`): `SshNotARepo` -> `ssh_not_a_repo`.
+            // A mismatch here silently breaks every frontend code match.
+            EgError::SshNotARepo { .. } => "ssh_not_a_repo",
             EgError::RepoOwnership { .. } => "repo_ownership",
             EgError::DirtyWorktree { .. } => "dirty_worktree",
             EgError::Network { .. } => "network",

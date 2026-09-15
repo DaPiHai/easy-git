@@ -604,7 +604,8 @@ async fn finish_progress_sink(
 }
 
 /// Fetches a remote (m1-plan R-22): CLI with live progress, then a worker
-/// status refresh (fs-watch also fires from the ref updates).
+/// status refresh (fs-watch also fires from the ref updates). SSH remotes run
+/// the fetch over the SSH channel via the handle dispatch.
 #[tauri::command]
 #[specta::specta]
 pub async fn sync_fetch(
@@ -615,12 +616,11 @@ pub async fn sync_fetch(
     prune: bool,
 ) -> Result<StatusReport, EgError> {
     let handle = manager.get(&repo_id)?;
-    let path = handle.canonical_path.clone();
     let (tx, join) = sync_progress_sink(&app, repo_id.clone(), "fetch");
-    let result =
-        run_blocking(move || eg_git_core::remote::fetch_at(&path, &remote, prune, Some(&tx))).await;
-    finish_progress_sink(&app, repo_id, "fetch", join, result.is_ok()).await;
+    let result = run_blocking(move || handle.sync_fetch(&remote, prune, Some(&tx))).await;
+    finish_progress_sink(&app, repo_id.clone(), "fetch", join, result.is_ok()).await;
     result?;
+    let handle = manager.get(&repo_id)?;
     run_blocking(move || handle.request_status()).await
 }
 
@@ -638,14 +638,12 @@ pub async fn sync_pull(
     strategy: SyncStrategy,
 ) -> Result<MergeOutcome, EgError> {
     let handle = manager.get(&repo_id)?;
-    let path = handle.canonical_path.clone();
     let (tx, join) = sync_progress_sink(&app, repo_id.clone(), "pull");
     let fetch_remote = remote.clone();
-    let fetched =
-        run_blocking(move || eg_git_core::remote::fetch_at(&path, &fetch_remote, false, Some(&tx)))
-            .await;
-    finish_progress_sink(&app, repo_id, "pull", join, fetched.is_ok()).await;
+    let fetched = run_blocking(move || handle.sync_fetch(&fetch_remote, false, Some(&tx))).await;
+    finish_progress_sink(&app, repo_id.clone(), "pull", join, fetched.is_ok()).await;
     fetched?;
+    let handle = manager.get(&repo_id)?;
     run_blocking(move || handle.pull_integrate(remote, branch, strategy)).await
 }
 
@@ -668,14 +666,12 @@ pub async fn sync_push(
     credentials: Option<eg_types::PushCredentials>,
 ) -> Result<StatusReport, EgError> {
     let handle = manager.get(&repo_id)?;
-    let path = handle.canonical_path.clone();
     let safety = std::sync::Arc::new(safety.inner().clone());
     let (tx, join) = sync_progress_sink(&app, repo_id.clone(), "push");
     let safety_for_task = safety.clone();
     let push_repo_id = repo_id.clone();
     let result = run_blocking(move || {
-        eg_git_core::remote::push_with_rollback(
-            &path,
+        handle.sync_push(
             &push_repo_id,
             &remote,
             &branch,
@@ -686,8 +682,9 @@ pub async fn sync_push(
         )
     })
     .await;
-    finish_progress_sink(&app, repo_id, "push", join, result.is_ok()).await;
+    finish_progress_sink(&app, repo_id.clone(), "push", join, result.is_ok()).await;
     result?;
+    let handle = manager.get(&repo_id)?;
     run_blocking(move || handle.request_status()).await
 }
 
@@ -701,10 +698,8 @@ pub async fn remote_test(
     remote: String,
 ) -> Result<u32, EgError> {
     let handle = manager.get(&repo_id)?;
-    let path = handle.canonical_path.clone();
     let (tx, join) = sync_progress_sink(&app, repo_id.clone(), "test");
-    let result =
-        run_blocking(move || eg_git_core::remote::test_remote(&path, &remote, Some(&tx))).await;
+    let result = run_blocking(move || handle.test_remote(&remote, Some(&tx))).await;
     finish_progress_sink(&app, repo_id, "test", join, result.is_ok()).await;
     result
 }
@@ -751,6 +746,53 @@ pub async fn repo_clone(
         tracing::info!(repo = %s.repo_id, path = %path, "cloned repo opened");
     }
     summary
+}
+
+/// Tests an SSH repository location (SSH wizard 连通性测试): connectivity
+/// plus `probe_repo`, the same validation `repo_open` runs. Accepts the same
+/// `ssh://…` / `user@host:path` forms. Returns the canonical URI on success.
+///
+/// Deliberately as strict as open: a host that connects but has no repository
+/// at the path must fail HERE (真机: `echo ok` passed for `/`, then open
+/// failed with "not a git repository").
+#[tauri::command]
+#[specta::specta]
+pub async fn ssh_test_connection(location: String) -> Result<String, EgError> {
+    let target = eg_types::parse_ssh_target(&location).ok_or_else(|| EgError::Internal {
+        context: format!("不是有效的 SSH 地址：{location}"),
+    })?;
+    run_blocking(move || {
+        eg_git_core::ssh::test_connection(&target, None)?;
+        eg_git_core::ssh::probe_repo(&target, None)?;
+        Ok(target.uri())
+    })
+    .await
+}
+
+/// Initializes a Git repository on the SSH host at `location`. Offered by
+/// the wizard when `repo_open` rejects a path with `SshNotARepo` because the
+/// directory exists but has no `.git` (a missing directory stays an error —
+/// no silent path creation).
+#[tauri::command]
+#[specta::specta]
+pub async fn ssh_init_repo(location: String) -> Result<(), EgError> {
+    let target = eg_types::parse_ssh_target(&location).ok_or_else(|| EgError::Internal {
+        context: format!("不是有效的 SSH 地址：{location}"),
+    })?;
+    run_blocking(move || eg_git_core::ssh::ssh_init(&target)).await
+}
+
+/// Lists a directory on an SSH host (SSH wizard 远端目录浏览). `dir` must be
+/// absolute or `~/`-relative; entries are bare names (`-p` marks dirs).
+#[tauri::command]
+#[specta::specta]
+pub async fn ssh_browse_dir(location: String, dir: String) -> Result<Vec<String>, EgError> {
+    let mut target = eg_types::parse_ssh_target(&location).ok_or_else(|| EgError::Internal {
+        context: format!("不是有效的 SSH 地址：{location}"),
+    })?;
+    // The browse dir overrides the location path when the user navigates.
+    target.path = dir.clone();
+    run_blocking(move || eg_git_core::ssh::browse_dir(&target, &dir, None)).await
 }
 
 #[tauri::command]

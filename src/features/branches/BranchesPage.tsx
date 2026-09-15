@@ -12,6 +12,7 @@ import {
 import { useEffect, useState } from 'react';
 import { Badge, Button, Dialog, EmptyState } from '../../components';
 import { t } from '../../lib/i18n';
+import { useIsSshActive } from '../../lib/useSshRepo';
 import { authorInitial, formatRelativeTime } from '../../lib/time';
 import type { BranchInfo } from '../../lib/ipc/commands';
 import { useMergeStore } from '../../stores/mergeStore';
@@ -129,6 +130,8 @@ function BranchRow({
       if (result === 'dirty') onDialog({ kind: 'dirty', name: branch.name });
     });
   };
+  // Remote-host repos disable branch deletion by policy (no trash-bin net).
+  const isSsh = useIsSshActive();
 
   return (
     <ContextMenu.Root modal={false}>
@@ -213,7 +216,7 @@ function BranchRow({
             <Pencil className="size-3.5" aria-hidden />
             {t('branch.rename')}
           </ContextMenu.Item>
-          {!branch.isCurrent ? (
+          {!branch.isCurrent && !isSsh ? (
             <ContextMenu.Item
               className={`${menuItemClass} text-danger data-[highlighted]:bg-danger-bg`}
               onSelect={() => onDialog({ kind: 'delete', name: branch.name })}
@@ -369,6 +372,8 @@ function FormDialog({
   onClose,
   danger = false,
   confirmTestId,
+  confirmDisabled = false,
+  confirmTitle,
 }: {
   open: boolean;
   title: string;
@@ -378,6 +383,8 @@ function FormDialog({
   onClose: () => void;
   danger?: boolean;
   confirmTestId: string;
+  confirmDisabled?: boolean;
+  confirmTitle?: string;
 }) {
   return (
     <Dialog open={open} title={title} onClose={onClose} danger={danger}>
@@ -394,7 +401,9 @@ function FormDialog({
           type="button"
           data-testid={confirmTestId}
           onClick={onConfirm}
-          className={`h-8 rounded-md px-3.5 text-secondary font-medium text-on-primary hover:opacity-90 ${
+          disabled={confirmDisabled}
+          title={confirmTitle}
+          className={`h-8 rounded-md px-3.5 text-secondary font-medium text-on-primary hover:opacity-90 disabled:pointer-events-none disabled:opacity-45 ${
             danger ? 'bg-danger' : 'bg-primary'
           }`}
         >
@@ -506,12 +515,15 @@ function DeleteBranchDialog({
   onClose: () => void;
 }) {
   const deleteBranch = useRefStore((s) => s.deleteBranch);
+  const isSsh = useIsSshActive();
   return (
     <FormDialog
       open={open}
       title={t('branch.deleteTitle', { name })}
       confirmLabel={t('branch.deleteConfirm')}
       confirmTestId="branch-delete-confirm"
+      confirmDisabled={isSsh}
+      confirmTitle={isSsh ? t('remote.disabledOnSsh') : undefined}
       danger
       onConfirm={() => {
         void deleteBranch(name).then((ok) => {

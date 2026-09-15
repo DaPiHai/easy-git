@@ -14,10 +14,10 @@ use git2::Repository;
 /// Wall-clock budgets for CLI commands (PRD §4.2 timeout handling). Big
 /// fetches are legitimate, so long-running ops get a generous ceiling; only
 /// a wedged process (e.g. a stalled network) ever hits it.
-const CLI_TIMEOUT_QUICK: Duration = Duration::from_secs(45);
-const CLI_TIMEOUT_NETWORK: Duration = Duration::from_secs(300);
-const CLI_TIMEOUT_CLONE: Duration = Duration::from_secs(600);
-const CLI_TIMEOUT_LOCAL: Duration = Duration::from_secs(900);
+pub(crate) const CLI_TIMEOUT_QUICK: Duration = Duration::from_secs(45);
+pub(crate) const CLI_TIMEOUT_NETWORK: Duration = Duration::from_secs(300);
+pub(crate) const CLI_TIMEOUT_CLONE: Duration = Duration::from_secs(600);
+pub(crate) const CLI_TIMEOUT_LOCAL: Duration = Duration::from_secs(900);
 
 /// Per-call authentication for one CLI invocation. `None` keeps the ambient
 /// behavior (system credential helpers / SSH agent, TDD R-23 default).

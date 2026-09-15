@@ -5,8 +5,11 @@
 pub mod error;
 pub mod paths;
 pub mod sensitive;
+pub mod ssh;
 
 pub use error::EgError;
+
+pub use ssh::{is_ssh_location, parse_ssh_target, RepoLocation, SshTarget, DEFAULT_SSH_PORT};
 
 mod dto;
 

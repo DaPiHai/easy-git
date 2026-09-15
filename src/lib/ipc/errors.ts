@@ -9,6 +9,7 @@
 
 export type EgErrorCode =
   | 'repo_not_found'
+  | 'ssh_not_a_repo'
   | 'repo_ownership'
   | 'dirty_worktree'
   | 'network'
@@ -47,7 +48,7 @@ type ErrorTemplate = {
   title: string;
   detail: (params: Record<string, unknown>) => string;
   reason?: (params: Record<string, unknown>) => string | undefined;
-  hint?: HintAction;
+  hint?: HintAction | ((params: Record<string, unknown>) => HintAction | undefined);
 };
 
 const asString = (value: unknown): string | undefined =>
@@ -56,9 +57,44 @@ const asString = (value: unknown): string | undefined =>
 const templates: Record<EgErrorCode, ErrorTemplate> = {
   repo_not_found: {
     title: '找不到仓库',
-    detail: (p) => `路径「${String(p.path ?? '')}」不是一个 Git 仓库`,
+    detail: (p) => {
+      const path = String(p.path ?? '');
+      // SSH remotes: name the host + path explicitly and suggest browsing
+      // (真机: raw `fatal: not a git repository` confused users about
+      // whether the HOST or the PATH was wrong).
+      if (path.startsWith('ssh://')) {
+        return `远端 ${path} 不是一个 Git 仓库：请检查服务器上的路径是否正确，或用「浏览远端目录」逐级确认`;
+      }
+      return `路径「${path}」不是一个 Git 仓库`;
+    },
     reason: (p) => asString(p.detail),
     hint: { action: 'open-repo-picker', label: '重新选择仓库' },
+  },
+  ssh_not_a_repo: {
+    title: '远端路径不是 Git 仓库',
+    detail: (p) => {
+      // Mirrors EgError::SshNotARepo in the Rust core. `target` is the
+      // structured SshTarget; we surface the URI so the dialog stays
+      // copy-pasteable, and let the existence flag switch the call to action.
+      const target = (p.target ?? {}) as {
+        path?: string;
+        user?: string | null;
+        host?: string;
+        port?: number;
+      };
+      const port = target.port === 22 || !target.port ? '' : `:${target.port}`;
+      const user = target.user ? `${target.user}@` : '';
+      const uri = `ssh://${user}${target.host ?? ''}${port}${target.path ?? ''}`;
+      if (p.exists) {
+        return `远端 ${uri} 是一个普通目录，尚未初始化为 Git 仓库；可在此初始化一个新仓库`;
+      }
+      return `远端 ${uri} 不存在：请先确认路径拼写，再用「浏览远端目录」逐级定位`;
+    },
+    reason: (p) => asString(p.detail),
+    hint: (p) =>
+      p.exists
+        ? { action: 'init-ssh-repo', label: '在此初始化仓库' }
+        : { action: 'open-repo-picker', label: '重新选择仓库' },
   },
   repo_ownership: {
     title: '无法打开这个文件夹',
@@ -78,14 +114,29 @@ const templates: Record<EgErrorCode, ErrorTemplate> = {
   },
   network: {
     title: '网络连接失败',
-    detail: (p) =>
-      `无法连接 ${String(p.url ?? '') || '远程仓库'}（${String(p.kind ?? 'network')}），请检查网络或代理设置`,
+    detail: (p) => {
+      if (String(p.kind ?? '') === 'dns') {
+        return `无法解析服务器地址 ${String(p.url ?? '')}，请检查主机名或 IP 是否正确`;
+      }
+      return `无法连接 ${String(p.url ?? '') || '远程仓库'}（${String(p.kind ?? 'network')}），请检查网络或代理设置`;
+    },
     reason: (p) => asString(p.detail),
     hint: { action: 'open-settings-network', label: '打开网络设置' },
   },
   auth: {
     title: '身份验证失败',
-    detail: (p) => `${String(p.provider ?? '远程平台')} 拒绝了当前凭据，请更新登录信息`,
+    detail: (p) => {
+      switch (String(p.provider ?? '')) {
+        case 'ssh-host-key':
+          return '服务器主机密钥未通过验证：首次连接请在命令行手动连接一次确认指纹；若指纹发生变化，请警惕中间人攻击，先在服务器上核实';
+        case 'ssh-key':
+          return 'SSH 密钥认证失败：请确认本机 ssh-agent 正在运行且已加载对应私钥，或检查服务器上 ~/.ssh/authorized_keys';
+        case 'ssh-passphrase':
+          return 'SSH 私钥需要解锁：请先在 ssh-agent 中解锁该密钥（ssh-add），EasyGit 不直接处理私钥口令';
+        default:
+          return `${String(p.provider ?? '远程平台')} 拒绝了当前凭据，请更新登录信息`;
+      }
+    },
     reason: (p) => asString(p.detail),
     hint: { action: 'open-credentials', label: '管理凭据' },
   },
@@ -102,7 +153,12 @@ const templates: Record<EgErrorCode, ErrorTemplate> = {
   },
   not_supported: {
     title: '该功能尚未支持',
-    detail: (p) => `${String(p.feature ?? '此功能')} 在当前版本暂不可用`,
+    detail: (p) => {
+      const feature = String(p.feature ?? '此功能');
+      // Remote-host policy refusals carry their own actionable sentence.
+      if (feature.includes('远端仓库')) return feature;
+      return `${feature} 在当前版本暂不可用`;
+    },
   },
   git_missing: {
     title: '未检测到 Git',
@@ -136,10 +192,15 @@ export function humanizeEgError(error: EgErrorLike): HumanizedError {
       : fallback;
   const rest: Record<string, unknown> = { ...error };
   delete rest.code;
+  const hint = template.hint
+    ? typeof template.hint === 'function'
+      ? template.hint(rest)
+      : template.hint
+    : undefined;
   return {
     title: template.title,
     detail: template.detail(rest),
     reason: template.reason?.(rest),
-    hint: template.hint ? { ...template.hint } : undefined,
+    hint: hint ? { ...hint } : undefined,
   };
 }

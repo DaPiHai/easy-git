@@ -2,8 +2,14 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { ChevronDown, Folder, FolderGit2, FolderOpen, FolderPlus } from 'lucide-react';
 import { openPath } from '@tauri-apps/plugin-opener';
 import { t } from '../../lib/i18n';
+import { isSshRepoPath } from '../../lib/ipc/commands';
 import { reportFailure } from '../../lib/ipc/report';
 import { useRepoStore } from '../../stores/repoStore';
+
+/** True for SSH remote-host coordinates (`summary.path` is the URI there). */
+export function isSshRepo(path: string): boolean {
+  return isSshRepoPath(path);
+}
 
 const contentClass =
   'z-50 min-w-56 rounded-lg border border-hairline bg-surface-3 p-1 shadow-[var(--eg-shadow-dialog)]';
@@ -85,10 +91,17 @@ export function RepoSwitcher() {
             <DropdownMenu.Item
               className={itemClass}
               data-testid="open-folder-item"
+              disabled={isSshRepo(active.path)}
+              title={isSshRepo(active.path) ? t('remote.disabledOnSsh') : undefined}
               onSelect={() => openRepoFolder(active.path)}
             >
               <Folder className="size-4 text-ink-tertiary" aria-hidden />
               {t('topbar.openFolder')}
+              {isSshRepo(active.path) ? (
+                <span className="ml-auto rounded-pill bg-surface-2 px-2 py-0.5 text-caption leading-none text-ink-tertiary">
+                  {t('wizard.ssh.remoteBadge')}
+                </span>
+              ) : null}
             </DropdownMenu.Item>
           ) : null}
           <DropdownMenu.Item className={itemClass} onSelect={() => void pickAndOpen()}>

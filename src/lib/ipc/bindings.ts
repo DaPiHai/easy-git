@@ -139,7 +139,8 @@ export const commands = {
 	resetCommits: (repoId: string, mode: ResetMode, target: string | null) => typedError<ResetOutcome, EgError_Serialize>(__TAURI_INVOKE("reset_commits", { repoId, mode, target })),
 	/**
 	 *  Fetches a remote (m1-plan R-22): CLI with live progress, then a worker
-	 *  status refresh (fs-watch also fires from the ref updates).
+	 *  status refresh (fs-watch also fires from the ref updates). SSH remotes run
+	 *  the fetch over the SSH channel via the handle dispatch.
 	 */
 	syncFetch: (repoId: string, remote: string, prune: boolean) => typedError<StatusReport, EgError_Serialize>(__TAURI_INVOKE("sync_fetch", { repoId, remote, prune })),
 	/**
@@ -170,6 +171,28 @@ export const commands = {
 	username: string,
 	password: string,
 } | null) => typedError<RepoSummary, EgError_Serialize>(__TAURI_INVOKE("repo_clone", { url, path, credentials })),
+	/**
+	 *  Tests an SSH repository location (SSH wizard 连通性测试): connectivity
+	 *  plus `probe_repo`, the same validation `repo_open` runs. Accepts the same
+	 *  `ssh://…` / `user@host:path` forms. Returns the canonical URI on success.
+	 * 
+	 *  Deliberately as strict as open: a host that connects but has no repository
+	 *  at the path must fail HERE (真机: `echo ok` passed for `/`, then open
+	 *  failed with "not a git repository").
+	 */
+	sshTestConnection: (location: string) => typedError<string, EgError_Serialize>(__TAURI_INVOKE("ssh_test_connection", { location })),
+	/**
+	 *  Initializes a Git repository on the SSH host at `location`. Offered by
+	 *  the wizard when `repo_open` rejects a path with `SshNotARepo` because the
+	 *  directory exists but has no `.git` (a missing directory stays an error —
+	 *  no silent path creation).
+	 */
+	sshInitRepo: (location: string) => typedError<null, EgError_Serialize>(__TAURI_INVOKE("ssh_init_repo", { location })),
+	/**
+	 *  Lists a directory on an SSH host (SSH wizard 远端目录浏览). `dir` must be
+	 *  absolute or `~/`-relative; entries are bare names (`-p` marks dirs).
+	 */
+	sshBrowseDir: (location: string, dir: string) => typedError<string[], EgError_Serialize>(__TAURI_INVOKE("ssh_browse_dir", { location, dir })),
 	remoteList: (repoId: string) => typedError<RemoteInfo[], EgError_Serialize>(__TAURI_INVOKE("remote_list", { repoId })),
 	/**  Adds a remote (R-24); the summary refreshes via fs-watch. */
 	remoteAdd: (repoId: string, name: string, url: string) => typedError<null, EgError_Serialize>(__TAURI_INVOKE("remote_add", { repoId, name, url })),
@@ -416,76 +439,90 @@ export type EgError_Deserialize =
  *  Path is not a Git repository (or cannot be opened). `detail` carries
  *  the underlying libgit2/IO message when there is one.
  */
-({ code: "repo_not_found"; path: string; detail: string | null }) & { confirm_required?: never; context?: never; feature?: never; kind?: never; paths?: never; provider?: never; state?: never; url?: never } | 
+({ code: "repo_not_found"; path: string; detail: string | null }) & { confirm_required?: never; context?: never; exists?: never; feature?: never; kind?: never; paths?: never; provider?: never; state?: never; target?: never; url?: never } | 
+/**
+ *  SSH remote directory exists but is not a Git repository (and the user
+ *  has not initialized one yet). The frontend uses `exists` to offer a
+ *  guided `git init`; a missing path stays under `RepoNotFound` to avoid
+ *  inviting the user to create something that was simply mistyped.
+ */
+({ code: "ssh_not_a_repo"; target: SshTarget; exists: boolean; detail: string | null }) & { confirm_required?: never; context?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; url?: never } | 
 /**
  *  The repository exists but its folder is owned by another user, and the
  *  real git CLI agrees with the refusal (libgit2-only refusals are aligned
  *  away silently in eg-git-core). The user must explicitly allow the
  *  folder via `safe.directory`.
  */
-({ code: "repo_ownership"; path: string; detail: string | null }) & { confirm_required?: never; context?: never; feature?: never; kind?: never; paths?: never; provider?: never; state?: never; url?: never } | 
+({ code: "repo_ownership"; path: string; detail: string | null }) & { confirm_required?: never; context?: never; exists?: never; feature?: never; kind?: never; paths?: never; provider?: never; state?: never; target?: never; url?: never } | 
 /**  The worktree has uncommitted changes that the operation would clobber. */
-({ code: "dirty_worktree"; paths: string[] }) & { confirm_required?: never; context?: never; detail?: never; feature?: never; kind?: never; path?: never; provider?: never; state?: never; url?: never } | 
+({ code: "dirty_worktree"; paths: string[] }) & { confirm_required?: never; context?: never; detail?: never; exists?: never; feature?: never; kind?: never; path?: never; provider?: never; state?: never; target?: never; url?: never } | 
 /**
  *  Remote connection failed; `kind` distinguishes dns/timeout/proxy.
  *  `detail` carries the redacted git stderr tail (the actual reason).
  */
-({ code: "network"; kind: string; url: string; detail: string | null }) & { confirm_required?: never; context?: never; feature?: never; path?: never; paths?: never; provider?: never; state?: never } | 
+({ code: "network"; kind: string; url: string; detail: string | null }) & { confirm_required?: never; context?: never; exists?: never; feature?: never; path?: never; paths?: never; provider?: never; state?: never; target?: never } | 
 /**  Remote rejected our credentials. */
-({ code: "auth"; provider: string; detail: string | null }) & { confirm_required?: never; context?: never; feature?: never; kind?: never; path?: never; paths?: never; state?: never; url?: never } | 
+({ code: "auth"; provider: string; detail: string | null }) & { confirm_required?: never; context?: never; exists?: never; feature?: never; kind?: never; path?: never; paths?: never; state?: never; target?: never; url?: never } | 
 /**  Repository is mid-merge/rebase with unresolved conflicts. */
-({ code: "conflict_state"; state: string; detail: string | null }) & { confirm_required?: never; context?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; url?: never } | 
+({ code: "conflict_state"; state: string; detail: string | null }) & { confirm_required?: never; context?: never; exists?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; target?: never; url?: never } | 
 /**  Destructive operation requires an explicit UI confirmation round-trip. */
-({ code: "unsafe_operation"; confirm_required: string }) & { context?: never; detail?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; url?: never } | 
+({ code: "unsafe_operation"; confirm_required: string }) & { context?: never; detail?: never; exists?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; target?: never; url?: never } | 
 /**  Feature exists in the model but is not implemented yet. */
-({ code: "not_supported"; feature: string }) & { confirm_required?: never; context?: never; detail?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; url?: never } | 
+({ code: "not_supported"; feature: string }) & { confirm_required?: never; context?: never; detail?: never; exists?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; target?: never; url?: never } | 
 /**
  *  The `git` executable is not available on PATH (PRD §7: EasyGit never
  *  bundles git; the UI guides the user through installing it instead).
  */
-({ code: "git_missing" }) & { confirm_required?: never; context?: never; detail?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; url?: never } | 
+({ code: "git_missing" }) & { confirm_required?: never; context?: never; detail?: never; exists?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; target?: never; url?: never } | 
 /**  A long task was cancelled by the user. */
-({ code: "cancelled" }) & { confirm_required?: never; context?: never; detail?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; url?: never } | 
+({ code: "cancelled" }) & { confirm_required?: never; context?: never; detail?: never; exists?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; target?: never; url?: never } | 
 /**  Anything unexpected; `context` lands in the local log file. */
-({ code: "internal"; context: string }) & { confirm_required?: never; detail?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; url?: never };
+({ code: "internal"; context: string }) & { confirm_required?: never; detail?: never; exists?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; target?: never; url?: never };
 
 export type EgError_Serialize = 
 /**
  *  Path is not a Git repository (or cannot be opened). `detail` carries
  *  the underlying libgit2/IO message when there is one.
  */
-({ code: "repo_not_found"; path: string; detail?: string | null }) & { confirm_required?: never; context?: never; feature?: never; kind?: never; paths?: never; provider?: never; state?: never; url?: never } | 
+({ code: "repo_not_found"; path: string; detail?: string | null }) & { confirm_required?: never; context?: never; exists?: never; feature?: never; kind?: never; paths?: never; provider?: never; state?: never; target?: never; url?: never } | 
+/**
+ *  SSH remote directory exists but is not a Git repository (and the user
+ *  has not initialized one yet). The frontend uses `exists` to offer a
+ *  guided `git init`; a missing path stays under `RepoNotFound` to avoid
+ *  inviting the user to create something that was simply mistyped.
+ */
+({ code: "ssh_not_a_repo"; target: SshTarget; exists: boolean; detail?: string | null }) & { confirm_required?: never; context?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; url?: never } | 
 /**
  *  The repository exists but its folder is owned by another user, and the
  *  real git CLI agrees with the refusal (libgit2-only refusals are aligned
  *  away silently in eg-git-core). The user must explicitly allow the
  *  folder via `safe.directory`.
  */
-({ code: "repo_ownership"; path: string; detail?: string | null }) & { confirm_required?: never; context?: never; feature?: never; kind?: never; paths?: never; provider?: never; state?: never; url?: never } | 
+({ code: "repo_ownership"; path: string; detail?: string | null }) & { confirm_required?: never; context?: never; exists?: never; feature?: never; kind?: never; paths?: never; provider?: never; state?: never; target?: never; url?: never } | 
 /**  The worktree has uncommitted changes that the operation would clobber. */
-({ code: "dirty_worktree"; paths: string[] }) & { confirm_required?: never; context?: never; detail?: never; feature?: never; kind?: never; path?: never; provider?: never; state?: never; url?: never } | 
+({ code: "dirty_worktree"; paths: string[] }) & { confirm_required?: never; context?: never; detail?: never; exists?: never; feature?: never; kind?: never; path?: never; provider?: never; state?: never; target?: never; url?: never } | 
 /**
  *  Remote connection failed; `kind` distinguishes dns/timeout/proxy.
  *  `detail` carries the redacted git stderr tail (the actual reason).
  */
-({ code: "network"; kind: string; url: string; detail?: string | null }) & { confirm_required?: never; context?: never; feature?: never; path?: never; paths?: never; provider?: never; state?: never } | 
+({ code: "network"; kind: string; url: string; detail?: string | null }) & { confirm_required?: never; context?: never; exists?: never; feature?: never; path?: never; paths?: never; provider?: never; state?: never; target?: never } | 
 /**  Remote rejected our credentials. */
-({ code: "auth"; provider: string; detail?: string | null }) & { confirm_required?: never; context?: never; feature?: never; kind?: never; path?: never; paths?: never; state?: never; url?: never } | 
+({ code: "auth"; provider: string; detail?: string | null }) & { confirm_required?: never; context?: never; exists?: never; feature?: never; kind?: never; path?: never; paths?: never; state?: never; target?: never; url?: never } | 
 /**  Repository is mid-merge/rebase with unresolved conflicts. */
-({ code: "conflict_state"; state: string; detail?: string | null }) & { confirm_required?: never; context?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; url?: never } | 
+({ code: "conflict_state"; state: string; detail?: string | null }) & { confirm_required?: never; context?: never; exists?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; target?: never; url?: never } | 
 /**  Destructive operation requires an explicit UI confirmation round-trip. */
-({ code: "unsafe_operation"; confirm_required: string }) & { context?: never; detail?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; url?: never } | 
+({ code: "unsafe_operation"; confirm_required: string }) & { context?: never; detail?: never; exists?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; target?: never; url?: never } | 
 /**  Feature exists in the model but is not implemented yet. */
-({ code: "not_supported"; feature: string }) & { confirm_required?: never; context?: never; detail?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; url?: never } | 
+({ code: "not_supported"; feature: string }) & { confirm_required?: never; context?: never; detail?: never; exists?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; target?: never; url?: never } | 
 /**
  *  The `git` executable is not available on PATH (PRD §7: EasyGit never
  *  bundles git; the UI guides the user through installing it instead).
  */
-({ code: "git_missing" }) & { confirm_required?: never; context?: never; detail?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; url?: never } | 
+({ code: "git_missing" }) & { confirm_required?: never; context?: never; detail?: never; exists?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; target?: never; url?: never } | 
 /**  A long task was cancelled by the user. */
-({ code: "cancelled" }) & { confirm_required?: never; context?: never; detail?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; url?: never } | 
+({ code: "cancelled" }) & { confirm_required?: never; context?: never; detail?: never; exists?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; target?: never; url?: never } | 
 /**  Anything unexpected; `context` lands in the local log file. */
-({ code: "internal"; context: string }) & { confirm_required?: never; detail?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; url?: never };
+({ code: "internal"; context: string }) & { confirm_required?: never; detail?: never; exists?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; target?: never; url?: never };
 
 /**
  *  Environment probe result (PRD §7: detect system git ≥ 2.30, guide the
@@ -638,6 +675,16 @@ export type ResetOutcome = {
 export type SelectedHunk = {
 	hunkIndex: number,
 	lineIndexes: number[],
+};
+
+/**  A repository living on a remote host, addressed over SSH. */
+export type SshTarget = {
+	host: string,
+	port: number,
+	/**  Login user. `None` means "let ssh pick" (usually the local username). */
+	user: string | null,
+	/**  Absolute path (or `~/`-relative) of the repository on the host. */
+	path: string,
 };
 
 /**

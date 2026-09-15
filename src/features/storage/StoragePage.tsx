@@ -2,6 +2,7 @@ import { Archive, Tag } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Badge, Dialog, EmptyState } from '../../components';
 import { t } from '../../lib/i18n';
+import { useIsSshActive } from '../../lib/useSshRepo';
 import { formatRelativeTime } from '../../lib/time';
 import { useRepoStore } from '../../stores/repoStore';
 import { useRefStore } from '../../stores/refsStore';
@@ -47,6 +48,8 @@ function StashSection() {
   const stashDrop = useRefStore((s) => s.stashDrop);
   const [saveOpen, setSaveOpen] = useState(false);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
+  // Remote-host repos disable stash deletion by policy (drop is destructive).
+  const isSsh = useIsSshActive();
   const hasChanges =
     status !== null && status.staged.length + status.unstaged.length + status.conflicted.length > 0;
 
@@ -105,14 +108,16 @@ function StashSection() {
                 >
                   {t('stash.pop')}
                 </button>
-                <button
-                  type="button"
-                  data-testid={`stash-drop-${entry.index}`}
-                  onClick={() => setDropIndex(entry.index)}
-                  className="rounded-md px-2 py-1 text-caption text-danger hover:bg-danger-bg"
-                >
-                  {t('stash.drop')}
-                </button>
+                {!isSsh ? (
+                  <button
+                    type="button"
+                    data-testid={`stash-drop-${entry.index}`}
+                    onClick={() => setDropIndex(entry.index)}
+                    className="rounded-md px-2 py-1 text-caption text-danger hover:bg-danger-bg"
+                  >
+                    {t('stash.drop')}
+                  </button>
+                ) : null}
               </div>
             </li>
           ))}
@@ -138,7 +143,9 @@ function StashSection() {
           <button
             type="button"
             data-testid="stash-drop-confirm"
-            className="h-8 rounded-md bg-danger px-3.5 text-secondary font-medium text-on-primary hover:opacity-90"
+            disabled={isSsh}
+            title={isSsh ? t('remote.disabledOnSsh') : undefined}
+            className="h-8 rounded-md bg-danger px-3.5 text-secondary font-medium text-on-primary hover:opacity-90 disabled:pointer-events-none disabled:opacity-45"
             onClick={() => {
               if (dropIndex !== null) void stashDrop(dropIndex);
               setDropIndex(null);
@@ -220,6 +227,8 @@ function TagSection() {
   const deleteTag = useRefStore((s) => s.deleteTag);
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteName, setDeleteName] = useState<string | null>(null);
+  // Remote-host repos disable tag deletion by policy (no trash-bin net).
+  const isSshTag = useIsSshActive();
 
   return (
     <section className="mt-eg-6" data-testid="tag-section">
@@ -266,14 +275,16 @@ function TagSection() {
               <span className="shrink-0 text-caption text-ink-tertiary">
                 {formatRelativeTime(tag.time ?? 0)}
               </span>
-              <button
-                type="button"
-                data-testid={`tag-delete-${tag.name}`}
-                onClick={() => setDeleteName(tag.name)}
-                className="ml-1 shrink-0 rounded-md px-2 py-1 text-caption text-danger hover:bg-danger-bg"
-              >
-                {t('branch.delete')}
-              </button>
+              {!isSshTag ? (
+                <button
+                  type="button"
+                  data-testid={`tag-delete-${tag.name}`}
+                  onClick={() => setDeleteName(tag.name)}
+                  className="ml-1 shrink-0 rounded-md px-2 py-1 text-caption text-danger hover:bg-danger-bg"
+                >
+                  {t('branch.delete')}
+                </button>
+              ) : null}
             </li>
           ))}
         </ul>
@@ -301,7 +312,9 @@ function TagSection() {
           <button
             type="button"
             data-testid="tag-delete-confirm"
-            className="h-8 rounded-md bg-danger px-3.5 text-secondary font-medium text-on-primary hover:opacity-90"
+            disabled={isSshTag}
+            title={isSshTag ? t('remote.disabledOnSsh') : undefined}
+            className="h-8 rounded-md bg-danger px-3.5 text-secondary font-medium text-on-primary hover:opacity-90 disabled:pointer-events-none disabled:opacity-45"
             onClick={() => {
               if (deleteName) void deleteTag(deleteName);
               setDeleteName(null);

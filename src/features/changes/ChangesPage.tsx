@@ -4,6 +4,7 @@ import { create } from 'zustand';
 import { useState } from 'react';
 import { Badge, Checkbox, Dialog, EmptyState, LoadingBar } from '../../components';
 import { t, type MessageKey } from '../../lib/i18n';
+import { useIsSshActive } from '../../lib/useSshRepo';
 import { useRepoStore } from '../../stores/repoStore';
 import { toast } from '../../stores/toastStore';
 import type { ChangeEntry, StageMode, StatusReport } from '../../lib/ipc/commands';
@@ -210,11 +211,14 @@ function DialogCancel({ onClose }: { onClose: () => void }) {
 function DiscardConfirm({ paths, onDone }: { paths: string[]; onDone: () => void }) {
   const discardPaths = useRepoStore((s) => s.discardPaths);
   const undoOperation = useRepoStore((s) => s.undoOperation);
+  const isSsh = useIsSshActive();
   return (
     <button
       type="button"
       data-testid="discard-confirm"
-      className="h-8 rounded-md bg-danger px-3.5 text-secondary font-medium text-on-primary hover:opacity-90"
+      disabled={isSsh}
+      title={isSsh ? t('remote.disabledOnSsh') : undefined}
+      className="h-8 rounded-md bg-danger px-3.5 text-secondary font-medium text-on-primary hover:opacity-90 disabled:pointer-events-none disabled:opacity-45"
       onClick={() => {
         onDone();
         void discardPaths(paths).then((opId) => {
@@ -235,11 +239,14 @@ function DiscardConfirm({ paths, onDone }: { paths: string[]; onDone: () => void
 function CleanConfirm({ paths, onDone }: { paths: string[]; onDone: () => void }) {
   const cleanUntracked = useRepoStore((s) => s.cleanUntracked);
   const undoOperation = useRepoStore((s) => s.undoOperation);
+  const isSsh = useIsSshActive();
   return (
     <button
       type="button"
       data-testid="clean-confirm"
-      className="h-8 rounded-md bg-danger px-3.5 text-secondary font-medium text-on-primary hover:opacity-90"
+      disabled={isSsh}
+      title={isSsh ? t('remote.disabledOnSsh') : undefined}
+      className="h-8 rounded-md bg-danger px-3.5 text-secondary font-medium text-on-primary hover:opacity-90 disabled:pointer-events-none disabled:opacity-45"
       onClick={() => {
         onDone();
         void cleanUntracked(paths).then((opId) => {
@@ -269,6 +276,7 @@ function Zone({
   const stagePaths = useRepoStore((s) => s.stagePaths);
   const previewClean = useRepoStore((s) => s.previewClean);
   const openClean = useChangesDialogs((s) => s.openClean);
+  const isSsh = useIsSshActive();
 
   if (entries.length === 0) {
     return (
@@ -311,7 +319,7 @@ function Zone({
           {title}
         </span>
         <Badge variant={conflictedZone ? 'conflict' : 'count'}>{entries.length}</Badge>
-        {hasUntracked ? (
+        {hasUntracked && !isSsh ? (
           <button
             type="button"
             data-testid="zone-clean"
@@ -377,6 +385,9 @@ function ChangeRow({
       toast.success(t(checked ? 'toast.unstaged' : 'toast.staged', { n: 1 })),
     );
   };
+  // Remote-host repos disable destructive writes by policy (no snapshot
+  // safety net over SSH): discard/clean menu entries stay hidden there.
+  const isSsh = useIsSshActive();
 
   return (
     <ContextMenu.Root modal={false}>
@@ -440,7 +451,7 @@ function ChangeRow({
               {checked ? t('menu.unstage') : t('menu.stage')}
             </ContextMenu.Item>
           ) : null}
-          {!conflictedZone ? (
+          {!conflictedZone && !isSsh ? (
             <ContextMenu.Item
               className={`${menuItemClass} text-danger data-[highlighted]:bg-danger-bg`}
               onSelect={() => openDiscard([entry])}
@@ -450,12 +461,14 @@ function ChangeRow({
           ) : null}
           {entry.kind === 'untracked' ? (
             <>
-              <ContextMenu.Item
-                className={`${menuItemClass} text-danger data-[highlighted]:bg-danger-bg`}
-                onSelect={() => openClean([entry.path])}
-              >
-                {t('menu.clean')}
-              </ContextMenu.Item>
+              {!isSsh ? (
+                <ContextMenu.Item
+                  className={`${menuItemClass} text-danger data-[highlighted]:bg-danger-bg`}
+                  onSelect={() => openClean([entry.path])}
+                >
+                  {t('menu.clean')}
+                </ContextMenu.Item>
+              ) : null}
               <ContextMenu.Sub>
                 <ContextMenu.SubTrigger className={menuItemClass}>
                   {t('menu.ignore')}

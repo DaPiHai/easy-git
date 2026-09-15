@@ -19,7 +19,8 @@ use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use uuid::Uuid;
 
 use super::{
-    commit, config, conflicts, diff, log, merge, ops, refs, remote, repo, stash, status, timeline,
+    commit, config, conflicts, diff, log, merge, ops, refs, remote, repo, ssh_backend, stash,
+    status, timeline,
 };
 
 /// Quiet period before a burst of filesystem events triggers one change event.
@@ -312,12 +313,43 @@ pub struct DiscardOutcome {
     pub status: StatusReport,
 }
 
-/// Cloneable handle to a live worker thread.
+/// Cloneable handle to a live worker thread (local) or a polled SSH session
+/// (remote). All public methods keep the local signatures: they dispatch on
+/// the backend internally, so the IPC layer needs no per-backend branches
+/// except for the handful of network commands that used `canonical_path`.
 #[derive(Clone)]
 pub struct WorkerHandle {
     pub repo_id: RepoId,
-    pub canonical_path: PathBuf,
-    tx: Sender<RepoCommand>,
+    /// Stable identity + display coordinate (canonical local path / SSH URI).
+    pub location: eg_types::RepoLocation,
+    kind: HandleKind,
+}
+
+#[derive(Clone)]
+enum HandleKind {
+    Local {
+        tx: Sender<RepoCommand>,
+    },
+    Ssh {
+        target: eg_types::SshTarget,
+        /// Closing this stops the polling thread (best-effort).
+        stop: Sender<()>,
+    },
+}
+
+impl WorkerHandle {
+    /// Local-only workdir path (fetch/push/test helpers). `None` for SSH
+    /// remotes, which run those commands over the SSH channel instead.
+    pub fn local_path(&self) -> Option<std::path::PathBuf> {
+        match &self.location {
+            eg_types::RepoLocation::Local(path) => Some(path.clone()),
+            eg_types::RepoLocation::Ssh(_) => None,
+        }
+    }
+
+    pub fn is_ssh(&self) -> bool {
+        self.location.is_ssh()
+    }
 }
 
 fn worker_gone() -> EgError {
@@ -328,14 +360,24 @@ fn worker_gone() -> EgError {
 
 impl WorkerHandle {
     pub fn request_status(&self) -> Result<StatusReport, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::status(&self.repo_id, target, None);
+        }
         self.request(RepoCommand::Status)
     }
 
     pub fn request_summary(&self) -> Result<RepoSummary, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::summarize(&self.repo_id, target, &target.uri());
+        }
         self.request(RepoCommand::Summary)
     }
 
     pub fn stage(&self, paths: Vec<String>, mode: StageMode) -> Result<StatusReport, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            ssh_backend::stage(target, &paths, mode, None)?;
+            return ssh_backend::status(&self.repo_id, target, None);
+        }
         self.request(|reply| RepoCommand::Stage { paths, mode, reply })
     }
 
@@ -344,6 +386,10 @@ impl WorkerHandle {
         paths: Vec<String>,
         safety: Arc<eg_safety::Safety>,
     ) -> Result<DiscardOutcome, EgError> {
+        if self.is_ssh() {
+            let _ = (paths, safety);
+            return Err(ssh_backend::refuse("丢弃修改"));
+        }
         self.request(|reply| RepoCommand::Discard {
             paths,
             safety,
@@ -352,6 +398,15 @@ impl WorkerHandle {
     }
 
     pub fn clean_preview(&self) -> Result<Vec<String>, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            // Preview stays available remotely (read-only); execution refuses.
+            return Ok(ssh_backend::status(&self.repo_id, target, None)?
+                .unstaged
+                .into_iter()
+                .filter(|e| e.kind == eg_types::ChangeKind::Untracked)
+                .map(|e| e.path)
+                .collect());
+        }
         self.request(|reply| RepoCommand::CleanPreview { reply })
     }
 
@@ -360,6 +415,10 @@ impl WorkerHandle {
         paths: Vec<String>,
         safety: Arc<eg_safety::Safety>,
     ) -> Result<DiscardOutcome, EgError> {
+        if self.is_ssh() {
+            let _ = (paths, safety);
+            return Err(ssh_backend::refuse("清理未跟踪"));
+        }
         self.request(|reply| RepoCommand::CleanExecute {
             paths,
             safety,
@@ -368,16 +427,26 @@ impl WorkerHandle {
     }
 
     pub fn ignore(&self, paths: Vec<String>, mode: IgnoreMode) -> Result<StatusReport, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            ssh_backend::ignore(target, &paths, mode, None)?;
+            return ssh_backend::status(&self.repo_id, target, None);
+        }
         self.request(|reply| RepoCommand::Ignore { paths, mode, reply })
     }
 
     /// True when the workdir has no `.gitignore` (创建/打开仓库时的提醒依据).
     pub fn gitignore_missing(&self) -> Result<bool, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::gitignore_missing(target);
+        }
         self.request(|reply| RepoCommand::GitignoreMissing { reply })
     }
 
     /// Writes the generic template if absent; returns whether it was created.
     pub fn gitignore_write_template(&self) -> Result<bool, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::write_default_gitignore(target);
+        }
         self.request(|reply| RepoCommand::GitignoreWriteTemplate { reply })
     }
 
@@ -386,6 +455,10 @@ impl WorkerHandle {
         op_id: String,
         safety: Arc<eg_safety::Safety>,
     ) -> Result<StatusReport, EgError> {
+        if self.is_ssh() {
+            let _ = (op_id, safety);
+            return Err(ssh_backend::refuse("撤销"));
+        }
         self.request(|reply| RepoCommand::Undo {
             op_id,
             safety,
@@ -397,10 +470,16 @@ impl WorkerHandle {
         &self,
         request: eg_types::CommitRequest,
     ) -> Result<eg_types::CommitOutcome, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::commit(&self.repo_id, target, &request, None);
+        }
         self.request(|reply| RepoCommand::Commit { request, reply })
     }
 
     pub fn config_get(&self, scope: ConfigScope, key: String) -> Result<Option<String>, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::config_get(target, scope, &key);
+        }
         self.request(|reply| RepoCommand::ConfigGet { scope, key, reply })
     }
 
@@ -410,6 +489,9 @@ impl WorkerHandle {
         key: String,
         value: String,
     ) -> Result<(), EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::config_set(target, scope, &key, &value);
+        }
         self.request(|reply| RepoCommand::ConfigSet {
             scope,
             key,
@@ -424,6 +506,18 @@ impl WorkerHandle {
         limit: u32,
         filter: eg_types::LogFilter,
     ) -> Result<eg_types::LogPage, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::log_page(
+                &self.repo_id,
+                target,
+                &ssh_backend::LogPageRequest {
+                    offset,
+                    limit,
+                    filter,
+                },
+                None,
+            );
+        }
         self.request(|reply| RepoCommand::LogPage {
             offset,
             limit,
@@ -433,10 +527,16 @@ impl WorkerHandle {
     }
 
     pub fn commit_detail(&self, oid: String) -> Result<eg_types::CommitDetail, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::commit_detail(target, &oid);
+        }
         self.request(|reply| RepoCommand::CommitDetail { oid, reply })
     }
 
     pub fn list_branches(&self) -> Result<Vec<String>, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::list_branches(target);
+        }
         self.request(|reply| RepoCommand::ListBranches { reply })
     }
 
@@ -444,6 +544,9 @@ impl WorkerHandle {
         &self,
         request: eg_types::DiffRequest,
     ) -> Result<eg_types::DiffResponse, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::diff_file(&self.repo_id, target, &request, None);
+        }
         self.request(|reply| RepoCommand::DiffFile { request, reply })
     }
 
@@ -451,10 +554,16 @@ impl WorkerHandle {
         &self,
         request: eg_types::StageLinesRequest,
     ) -> Result<StatusReport, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::stage_lines(&self.repo_id, target, &request, None);
+        }
         self.request(|reply| RepoCommand::StageLines { request, reply })
     }
 
     pub fn branch_list(&self) -> Result<Vec<eg_types::BranchInfo>, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::branch_list(target);
+        }
         self.request(|reply| RepoCommand::BranchList { reply })
     }
 
@@ -463,10 +572,16 @@ impl WorkerHandle {
         name: String,
         oid: Option<String>,
     ) -> Result<eg_types::BranchInfo, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::create_branch(target, &name, oid.as_deref(), None);
+        }
         self.request(|reply| RepoCommand::BranchCreate { name, oid, reply })
     }
 
     pub fn branch_rename(&self, old_name: String, new_name: String) -> Result<(), EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::rename_branch(target, &old_name, &new_name);
+        }
         self.request(|reply| RepoCommand::BranchRename {
             old_name,
             new_name,
@@ -479,6 +594,10 @@ impl WorkerHandle {
         name: String,
         safety: Arc<eg_safety::Safety>,
     ) -> Result<String, EgError> {
+        if self.is_ssh() {
+            let _ = (name, safety);
+            return Err(ssh_backend::refuse("删除分支"));
+        }
         self.request(|reply| RepoCommand::BranchDelete {
             name,
             safety,
@@ -487,10 +606,16 @@ impl WorkerHandle {
     }
 
     pub fn branch_switch(&self, name: String) -> Result<StatusReport, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::switch_branch(&self.repo_id, target, &name, None);
+        }
         self.request(|reply| RepoCommand::BranchSwitch { name, reply })
     }
 
     pub fn tag_list(&self) -> Result<Vec<eg_types::TagInfo>, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::tag_list(target);
+        }
         self.request(|reply| RepoCommand::TagList { reply })
     }
 
@@ -500,6 +625,9 @@ impl WorkerHandle {
         oid: String,
         message: Option<String>,
     ) -> Result<eg_types::TagInfo, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::create_tag(target, &name, &oid, message.as_deref());
+        }
         self.request(|reply| RepoCommand::TagCreate {
             name,
             oid,
@@ -513,6 +641,10 @@ impl WorkerHandle {
         name: String,
         safety: Arc<eg_safety::Safety>,
     ) -> Result<String, EgError> {
+        if self.is_ssh() {
+            let _ = (name, safety);
+            return Err(ssh_backend::refuse("删除标签"));
+        }
         self.request(|reply| RepoCommand::TagDelete {
             name,
             safety,
@@ -521,6 +653,9 @@ impl WorkerHandle {
     }
 
     pub fn stash_list(&self) -> Result<Vec<eg_types::StashEntry>, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::stash_list(target);
+        }
         self.request(|reply| RepoCommand::StashList { reply })
     }
 
@@ -529,6 +664,15 @@ impl WorkerHandle {
         message: Option<String>,
         include_untracked: bool,
     ) -> Result<StatusReport, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::stash_push(
+                &self.repo_id,
+                target,
+                message.as_deref(),
+                include_untracked,
+                None,
+            );
+        }
         self.request(|reply| RepoCommand::StashPush {
             message,
             include_untracked,
@@ -537,10 +681,17 @@ impl WorkerHandle {
     }
 
     pub fn stash_apply(&self, index: u32, pop: bool) -> Result<StatusReport, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::stash_apply(&self.repo_id, target, index, pop, None);
+        }
         self.request(|reply| RepoCommand::StashApply { index, pop, reply })
     }
 
     pub fn stash_drop(&self, index: u32) -> Result<Vec<eg_types::StashEntry>, EgError> {
+        if self.is_ssh() {
+            let _ = index;
+            return Err(ssh_backend::refuse("删除储藏"));
+        }
         self.request(|reply| RepoCommand::StashDrop { index, reply })
     }
 
@@ -549,22 +700,37 @@ impl WorkerHandle {
         name: String,
         no_ff: bool,
     ) -> Result<eg_types::MergeOutcome, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::merge_start(&self.repo_id, target, &name, no_ff, None);
+        }
         self.request(|reply| RepoCommand::MergeStart { name, no_ff, reply })
     }
 
     pub fn merge_state(&self) -> Result<Option<eg_types::MergeState>, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::merge_state(target);
+        }
         self.request(|reply| RepoCommand::MergeState { reply })
     }
 
     pub fn merge_abort(&self) -> Result<StatusReport, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::merge_abort(&self.repo_id, target, None);
+        }
         self.request(|reply| RepoCommand::MergeAbort { reply })
     }
 
     pub fn conflicts_get(&self) -> Result<Vec<eg_types::ConflictFile>, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::conflicts_get(target, None);
+        }
         self.request(|reply| RepoCommand::ConflictsGet { reply })
     }
 
     pub fn conflict_resolve(&self, path: String, content: String) -> Result<StatusReport, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::conflict_resolve(&self.repo_id, target, &path, &content, None);
+        }
         self.request(|reply| RepoCommand::ConflictResolve {
             path,
             content,
@@ -573,6 +739,9 @@ impl WorkerHandle {
     }
 
     pub fn revert(&self, oids: Vec<String>) -> Result<StatusReport, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::revert(&self.repo_id, target, &oids, None);
+        }
         self.request(|reply| RepoCommand::Revert { oids, reply })
     }
 
@@ -582,6 +751,10 @@ impl WorkerHandle {
         target: Option<String>,
         safety: Arc<eg_safety::Safety>,
     ) -> Result<eg_types::ResetOutcome, EgError> {
+        if self.is_ssh() {
+            let _ = (mode, target, safety);
+            return Err(ssh_backend::refuse("重置"));
+        }
         self.request(|reply| RepoCommand::ResetCmd {
             mode,
             target,
@@ -591,10 +764,16 @@ impl WorkerHandle {
     }
 
     pub fn remote_list(&self) -> Result<Vec<eg_types::RemoteInfo>, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::remote_list(target);
+        }
         self.request(|reply| RepoCommand::RemoteList { reply })
     }
 
     pub fn remote_add(&self, name: String, url: String) -> Result<(), EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::remote_add(target, &name, &url);
+        }
         self.request(|reply| RepoCommand::RemoteAdd { name, url, reply })
     }
 
@@ -603,6 +782,9 @@ impl WorkerHandle {
         old_name: String,
         new_name: String,
     ) -> Result<Vec<String>, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::remote_rename(target, &old_name, &new_name);
+        }
         self.request(|reply| RepoCommand::RemoteRename {
             old_name,
             new_name,
@@ -611,10 +793,16 @@ impl WorkerHandle {
     }
 
     pub fn remote_remove(&self, name: String) -> Result<(), EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::remote_remove(target, &name);
+        }
         self.request(|reply| RepoCommand::RemoteRemove { name, reply })
     }
 
     pub fn remote_set_url(&self, name: String, url: String) -> Result<(), EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::remote_set_url(target, &name, &url);
+        }
         self.request(|reply| RepoCommand::RemoteSetUrl { name, url, reply })
     }
 
@@ -624,6 +812,16 @@ impl WorkerHandle {
         branch: String,
         strategy: eg_types::SyncStrategy,
     ) -> Result<eg_types::MergeOutcome, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::pull_integrate(
+                &self.repo_id,
+                target,
+                &remote,
+                &branch,
+                strategy,
+                None,
+            );
+        }
         self.request(|reply| RepoCommand::PullIntegrate {
             remote,
             branch,
@@ -633,6 +831,10 @@ impl WorkerHandle {
     }
 
     pub fn redo(&self, safety: Arc<eg_safety::Safety>) -> Result<DiscardOutcome, EgError> {
+        if self.is_ssh() {
+            let _ = safety;
+            return Err(ssh_backend::refuse("重做"));
+        }
         self.request(|reply| RepoCommand::Redo { safety, reply })
     }
 
@@ -641,6 +843,10 @@ impl WorkerHandle {
         limit: u32,
         safety: Arc<eg_safety::Safety>,
     ) -> Result<Vec<eg_types::TimelineEntry>, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            let _ = safety;
+            return ssh_backend::timeline(&self.repo_id, target, limit);
+        }
         self.request(|reply| RepoCommand::Timeline {
             limit,
             safety,
@@ -653,6 +859,10 @@ impl WorkerHandle {
         oid: String,
         safety: Arc<eg_safety::Safety>,
     ) -> Result<eg_types::ResetOutcome, EgError> {
+        if self.is_ssh() {
+            let _ = (oid, safety);
+            return Err(ssh_backend::refuse("恢复到此状态"));
+        }
         self.request(|reply| RepoCommand::RestoreTo { oid, safety, reply })
     }
 
@@ -660,10 +870,18 @@ impl WorkerHandle {
         &self,
         safety: Arc<eg_safety::Safety>,
     ) -> Result<eg_types::UndoRedoState, EgError> {
+        if self.is_ssh() {
+            let _ = safety;
+            // No safety log over SSH (destructive ops are refused): no undo.
+            return Ok(ssh_backend::undo_state());
+        }
         self.request(|reply| RepoCommand::UndoState { safety, reply })
     }
 
     pub fn remote_branch_list(&self) -> Result<Vec<String>, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            return ssh_backend::remote_branch_list(target);
+        }
         self.request(|reply| RepoCommand::RemoteBranchList { reply })
     }
 
@@ -672,6 +890,15 @@ impl WorkerHandle {
         branch: String,
         upstream: Option<String>,
     ) -> Result<eg_types::BranchInfo, EgError> {
+        if let HandleKind::Ssh { target, .. } = &self.kind {
+            ssh_backend::set_branch_upstream(target, &branch, upstream.as_deref())?;
+            return ssh_backend::branch_list(target)?
+                .into_iter()
+                .find(|b| b.name == branch)
+                .ok_or_else(|| EgError::Internal {
+                    context: "branch vanished after upstream set".into(),
+                });
+        }
         self.request(|reply| RepoCommand::BranchSetUpstream {
             branch,
             upstream,
@@ -679,13 +906,96 @@ impl WorkerHandle {
         })
     }
 
+    // -- Network commands (previously driven by `canonical_path` in the IPC
+    // layer). Local handles run the existing path-based helpers; SSH handles
+    // run the same operation over the SSH channel. Progress flows through
+    // the caller's channel like the local variants.
+
+    pub fn sync_fetch(
+        &self,
+        remote: &str,
+        prune: bool,
+        on_progress: Option<&Sender<remote::SyncProgress>>,
+    ) -> Result<(), EgError> {
+        match &self.kind {
+            HandleKind::Local { .. } => {
+                let path = self.local_path().expect("local handle has a path");
+                super::remote::fetch_at(&path, remote, prune, on_progress)
+            }
+            HandleKind::Ssh { target, .. } => {
+                ssh_backend::fetch(target, remote, prune, on_progress)
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn sync_push(
+        &self,
+        repo_id: &str,
+        remote: &str,
+        branch: &str,
+        force: bool,
+        safety: &eg_safety::Safety,
+        on_progress: Option<&Sender<remote::SyncProgress>>,
+        credentials: Option<&eg_types::PushCredentials>,
+    ) -> Result<(), EgError> {
+        match &self.kind {
+            HandleKind::Local { .. } => {
+                let path = self.local_path().expect("local handle has a path");
+                super::remote::push_with_rollback(
+                    &path,
+                    repo_id,
+                    remote,
+                    branch,
+                    force,
+                    safety,
+                    on_progress,
+                    credentials,
+                )
+            }
+            HandleKind::Ssh { target, .. } => {
+                if force {
+                    return Err(ssh_backend::refuse("强推"));
+                }
+                ssh_backend::push(target, remote, branch, true, on_progress, credentials)
+            }
+        }
+    }
+
+    pub fn test_remote(
+        &self,
+        remote: &str,
+        on_progress: Option<&Sender<remote::SyncProgress>>,
+    ) -> Result<u32, EgError> {
+        match &self.kind {
+            HandleKind::Local { .. } => {
+                let path = self.local_path().expect("local handle has a path");
+                super::remote::test_remote(&path, remote, on_progress)
+            }
+            HandleKind::Ssh { target, .. } => {
+                ssh_backend::ls_remote(target, remote, on_progress).map(|refs| refs.len() as u32)
+            }
+        }
+    }
+
     fn request<T>(
         &self,
         make: impl FnOnce(Sender<Result<T, EgError>>) -> RepoCommand,
     ) -> Result<T, EgError> {
-        let (tx, rx) = channel();
-        if self.tx.send(make(tx)).is_err() {
-            tracing::error!(repo = %self.repo_id, "repo worker stopped");
+        match &self.kind {
+            HandleKind::Local { tx } => Self::request_via(tx, &self.repo_id, make),
+            HandleKind::Ssh { .. } => Err(worker_gone()),
+        }
+    }
+
+    fn request_via<T>(
+        tx: &Sender<RepoCommand>,
+        repo_id: &str,
+        make: impl FnOnce(Sender<Result<T, EgError>>) -> RepoCommand,
+    ) -> Result<T, EgError> {
+        let (tx_reply, rx) = channel();
+        if tx.send(make(tx_reply)).is_err() {
+            tracing::error!(repo = %repo_id, "repo worker stopped");
             return Err(worker_gone());
         }
         match rx.recv_timeout(REQUEST_TIMEOUT) {
@@ -695,14 +1005,14 @@ impl WorkerHandle {
                     // control flow, not malfunctions — keep them off error level.
                     if error.is_expected() {
                         tracing::debug!(
-                            repo = %self.repo_id,
+                            repo = %repo_id,
                             code = error.code(),
                             error = ?error,
                             "repo command refused"
                         );
                     } else {
                         tracing::error!(
-                            repo = %self.repo_id,
+                            repo = %repo_id,
                             code = error.code(),
                             error = ?error,
                             "repo command failed"
@@ -712,7 +1022,7 @@ impl WorkerHandle {
                 result
             }
             Err(_) => {
-                tracing::error!(repo = %self.repo_id, "repo worker request timed out");
+                tracing::error!(repo = %repo_id, "repo worker request timed out");
                 Err(EgError::Internal {
                     context: "repo worker request timed out".into(),
                 })
@@ -721,10 +1031,18 @@ impl WorkerHandle {
     }
 
     /// Drains the queue and stops the thread (TDD §4.1: close = drain + drop).
+    /// For SSH remotes this stops the polling thread (best-effort).
     pub fn close(&self) {
-        let (tx, rx) = channel();
-        if self.tx.send(RepoCommand::Close(tx)).is_ok() {
-            let _ = rx.recv_timeout(Duration::from_secs(2));
+        match &self.kind {
+            HandleKind::Local { tx } => {
+                let (done_tx, done_rx) = channel();
+                if tx.send(RepoCommand::Close(done_tx)).is_ok() {
+                    let _ = done_rx.recv_timeout(Duration::from_secs(2));
+                }
+            }
+            HandleKind::Ssh { stop, .. } => {
+                let _ = stop.send(());
+            }
         }
     }
 }
@@ -760,8 +1078,8 @@ pub fn spawn(
 
     let handle = WorkerHandle {
         repo_id: repo_id.clone(),
-        canonical_path: canonical_path.clone(),
-        tx,
+        location: eg_types::RepoLocation::Local(canonical_path.clone()),
+        kind: HandleKind::Local { tx },
     };
 
     let thread_repo_id = repo_id.clone();
@@ -785,6 +1103,91 @@ pub fn spawn(
         })?;
 
     Ok(handle)
+}
+
+/// How often the SSH polling thread re-checks the remote HEAD + status
+/// snapshot. Remote polling replaces the local fs-watch (there is no local
+/// workdir to watch); manual refresh in the UI stays the primary trigger.
+pub const SSH_POLL_INTERVAL: Duration = Duration::from_secs(30);
+
+/// Spawns the SSH polling thread for a remote-host repository. Unlike the
+/// local worker this thread owns no `git2::Repository`: every poll and every
+/// user command opens a fresh SSH channel through `ssh_backend`, so commands
+/// execute directly on the caller's thread while the poller only emits
+/// `repo://changed` when the remote HEAD or status snapshot moves.
+pub fn spawn_ssh(
+    target: eg_types::SshTarget,
+    repo_id: RepoId,
+    on_change: ChangeSink,
+) -> Result<WorkerHandle, EgError> {
+    // Validate the target up front so `repo_open` fails fast instead of
+    // registering a dead handle.
+    super::ssh::test_connection(&target, None)?;
+    super::ssh::probe_repo(&target, None)?;
+
+    let (stop_tx, stop_rx) = channel::<()>();
+    let handle = WorkerHandle {
+        repo_id: repo_id.clone(),
+        location: eg_types::RepoLocation::Ssh(target.clone()),
+        kind: HandleKind::Ssh {
+            target: target.clone(),
+            stop: stop_tx,
+        },
+    };
+
+    let thread_repo_id = repo_id.clone();
+    std::thread::Builder::new()
+        .name(format!("eg-ssh-{}", &repo_id[..8.min(repo_id.len())]))
+        .spawn(move || {
+            ssh_poll_loop(target, thread_repo_id, on_change, stop_rx);
+        })
+        .map_err(|e| EgError::Internal {
+            context: format!("ssh worker spawn failed: {e}"),
+        })?;
+
+    Ok(handle)
+}
+
+/// Polls `rev-parse HEAD` plus a compact status snapshot; any change emits
+/// the change sink once (debounced by the poll interval itself).
+fn ssh_poll_loop(
+    target: eg_types::SshTarget,
+    repo_id: RepoId,
+    on_change: ChangeSink,
+    stop: std::sync::mpsc::Receiver<()>,
+) {
+    let snapshot = || -> Option<String> {
+        let head = super::ssh_backend::status(&repo_id, &target, None)
+            .ok()
+            .map(|report| {
+                let mut parts = vec![
+                    report.branch.unwrap_or_default(),
+                    report.head_oid.unwrap_or_default(),
+                ];
+                for e in report
+                    .staged
+                    .iter()
+                    .chain(&report.unstaged)
+                    .chain(&report.conflicted)
+                {
+                    parts.push(format!("{:?}:{}", e.kind, e.path));
+                }
+                parts.join("|")
+            });
+        head
+    };
+    let mut last = snapshot();
+    loop {
+        match stop.recv_timeout(SSH_POLL_INTERVAL) {
+            Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+        }
+        let current = snapshot();
+        if current != last {
+            last = current;
+            on_change(&repo_id);
+        }
+    }
 }
 
 fn run_loop(
@@ -1167,13 +1570,24 @@ pub struct RepoManager {
 impl RepoManager {
     /// Opens the repository at `path` (searching upwards like git), or returns
     /// the summary of the already-open worker for the same canonical path.
+    /// SSH locations (`ssh://…` / `user@host:path`) open a remote session
+    /// instead of a local worker — see [`RepoManager::open_ssh`].
     pub fn open(&self, path: &Path, on_change: ChangeSink) -> Result<RepoSummary, EgError> {
+        let path_str = path.to_string_lossy();
+        if eg_types::is_ssh_location(&path_str) {
+            let target =
+                eg_types::parse_ssh_target(&path_str).ok_or_else(|| EgError::Internal {
+                    context: format!("invalid SSH location: {path_str}"),
+                })?;
+            return self.open_ssh(target, on_change);
+        }
         let canonical = path.canonicalize().map_err(|e| EgError::RepoNotFound {
             path: eg_types::paths::display_path(path),
             detail: Some(e.to_string()),
         })?;
+        let location = eg_types::RepoLocation::Local(canonical.clone());
 
-        if let Some(existing) = self.find_by_path(&canonical) {
+        if let Some(existing) = self.find_by_location(&location) {
             return existing.request_summary();
         }
 
@@ -1181,6 +1595,29 @@ impl RepoManager {
         let repo_id = Uuid::new_v4().to_string();
         let sink: ChangeSink = Arc::new(move |id| on_change(id));
         let handle = spawn(repo, repo_id, canonical, sink)?;
+        self.register(handle)
+    }
+
+    /// Opens a remote-host repository over SSH (fail-fast connectivity +
+    /// repo validation, dedupe by SSH URI, polled change events).
+    pub fn open_ssh(
+        &self,
+        target: eg_types::SshTarget,
+        on_change: ChangeSink,
+    ) -> Result<RepoSummary, EgError> {
+        let location = eg_types::RepoLocation::Ssh(target.clone());
+        if let Some(existing) = self.find_by_location(&location) {
+            return existing.request_summary();
+        }
+        let repo_id = Uuid::new_v4().to_string();
+        let sink: ChangeSink = Arc::new(move |id| on_change(id));
+        let handle = spawn_ssh(target, repo_id, sink)?;
+        self.register(handle)
+    }
+
+    /// Inserts a freshly opened handle after its first summary succeeds;
+    /// tears it down when the summary fails.
+    fn register(&self, handle: WorkerHandle) -> Result<RepoSummary, EgError> {
         let summary = handle.request_summary();
         match summary {
             Ok(s) => {
@@ -1197,12 +1634,10 @@ impl RepoManager {
         }
     }
 
-    fn find_by_path(&self, canonical: &Path) -> Option<WorkerHandle> {
+    fn find_by_location(&self, location: &eg_types::RepoLocation) -> Option<WorkerHandle> {
+        let key = location.key();
         let workers = self.workers.lock().expect("repo manager mutex");
-        workers
-            .values()
-            .find(|w| w.canonical_path == canonical)
-            .cloned()
+        workers.values().find(|w| w.location.key() == key).cloned()
     }
 
     pub fn get(&self, repo_id: &str) -> Result<WorkerHandle, EgError> {
