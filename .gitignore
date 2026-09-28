@@ -12,3 +12,6 @@ src-tauri/gen/schemas/
 
 # ZCode session tooling (auto-written plan files)
 .zcode/
+
+# WorkBuddy AI tooling (local memory state)
+.workbuddy-ai/
