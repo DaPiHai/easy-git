@@ -466,6 +466,7 @@ export const zhCN = {
   'ssh.hostKey.copied': '已复制',
   'ssh.hostKey.type': '密钥类型',
   'ssh.hostKey.trust': '信任并继续',
+  'ssh.hostKey.retryProbe': '重新获取指纹',
   'ssh.hostKey.ack': '我确认这是预期的服务器变更（例如管理员更换了主机密钥）',
 
   'ssh.setup.open': '配置 SSH 连接',

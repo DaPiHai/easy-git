@@ -39,6 +39,8 @@ interface SshState {
   /** Shows the confirmation dialog and resolves true only after known_hosts
    *  was written successfully. Concurrent callers share one prompt. */
   requestHostKey: (host: string, port: number, changed: boolean) => Promise<boolean>;
+  /** Re-runs ssh-keyscan-style probing after a transient failure. */
+  retryHostKeyProbe: () => Promise<void>;
   confirmHostKey: () => Promise<void>;
   cancelHostKey: () => void;
   generateKey: () => Promise<SshPublicKey | null>;
@@ -114,6 +116,29 @@ export const useSshStore = create<SshState>()((set, get) => ({
       },
     );
     return pendingPrompt;
+  },
+
+  retryHostKeyProbe: async () => {
+    const prompt = get().hostKeyPrompt;
+    if (!prompt) return;
+    set({ hostKeyPrompt: { ...prompt, loading: true, error: null } });
+    try {
+      const info = await probeSshHostKey(prompt.host, prompt.port);
+      const current = get().hostKeyPrompt;
+      if (!current || current.id !== prompt.id) return;
+      set({ hostKeyPrompt: { ...current, ...info, loading: false } });
+    } catch (error) {
+      const current = get().hostKeyPrompt;
+      if (!current || current.id !== prompt.id) return;
+      const humanized = formatIpcError(error as EgErrorLike);
+      set({
+        hostKeyPrompt: {
+          ...current,
+          loading: false,
+          error: humanized.reason ?? humanized.detail,
+        },
+      });
+    }
   },
 
   confirmHostKey: async () => {

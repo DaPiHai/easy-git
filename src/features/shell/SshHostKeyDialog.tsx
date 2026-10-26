@@ -12,6 +12,7 @@ import { useSshStore } from '../../stores/sshStore';
 export function SshHostKeyDialog() {
   const prompt = useSshStore((s) => s.hostKeyPrompt);
   const confirm = useSshStore((s) => s.confirmHostKey);
+  const retryProbe = useSshStore((s) => s.retryHostKeyProbe);
   const cancel = useSshStore((s) => s.cancelHostKey);
   const [copied, setCopied] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
@@ -111,13 +112,25 @@ export function SshHostKeyDialog() {
       ) : null}
 
       {prompt.error ? (
-        <p
-          role="alert"
-          data-testid="hostkey-error"
-          className="mt-eg-3 rounded-md border border-danger-border bg-danger-bg px-eg-3 py-eg-2 text-caption whitespace-pre-wrap break-words text-danger"
-        >
-          {prompt.error}
-        </p>
+        <div className="mt-eg-3 rounded-md border border-danger-border bg-danger-bg px-eg-3 py-eg-2">
+          <p
+            role="alert"
+            data-testid="hostkey-error"
+            className="text-caption whitespace-pre-wrap break-words text-danger"
+          >
+            {prompt.error}
+          </p>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="mt-2"
+            loading={prompt.loading}
+            data-testid="hostkey-retry"
+            onClick={() => void retryProbe()}
+          >
+            {t('ssh.hostKey.retryProbe')}
+          </Button>
+        </div>
       ) : null}
     </Dialog>
   );
