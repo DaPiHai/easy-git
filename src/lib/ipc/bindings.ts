@@ -198,6 +198,25 @@ export const commands = {
 	 *  "管理凭据" section. Read-only — no private keys, no remote calls.
 	 */
 	sshCredentialsOverview: () => typedError<SshCredentialsOverview, EgError_Serialize>(__TAURI_INVOKE("ssh_credentials_overview")),
+	/**
+	 *  Probing a server's host key for the "confirm fingerprint" dialog. No
+	 *  known_hosts write happens here; the user must confirm first.
+	 */
+	sshProbeHostKey: (host: string, port: number) => typedError<SshHostKeyInfo, EgError_Serialize>(__TAURI_INVOKE("ssh_probe_host_key", { host, port })),
+	/**
+	 *  Writes the confirmed fingerprint into known_hosts (after re-probing and
+	 *  comparing), then returns the probed key for the success toast.
+	 */
+	sshTrustHostKey: (host: string, port: number, fingerprint: string) => typedError<SshHostKeyInfo, EgError_Serialize>(__TAURI_INVOKE("ssh_trust_host_key", { host, port, fingerprint })),
+	/**
+	 *  Generates the default ed25519 key for the SSH wizard (no passphrase so
+	 *  ssh can use it without an agent; never overwrites an existing file).
+	 */
+	sshGenerateKey: (request: SshGenerateKeyRequest) => typedError<SshPublicKey, EgError_Serialize>(__TAURI_INVOKE("ssh_generate_key", { request })),
+	/**  Reads a public key (`~/.ssh/*.pub`) for the copy-to-clipboard action. */
+	sshPublicKey: (path: string) => typedError<string, EgError_Serialize>(__TAURI_INVOKE("ssh_public_key", { path })),
+	/**  Runs `ssh -T git@github.com` and returns the authenticated username. */
+	sshTestGithub: () => typedError<string, EgError_Serialize>(__TAURI_INVOKE("ssh_test_github")),
 	remoteList: (repoId: string) => typedError<RemoteInfo[], EgError_Serialize>(__TAURI_INVOKE("remote_list", { repoId })),
 	/**  Adds a remote (R-24); the summary refreshes via fs-watch. */
 	remoteAdd: (repoId: string, name: string, url: string) => typedError<null, EgError_Serialize>(__TAURI_INVOKE("remote_add", { repoId, name, url })),
@@ -444,90 +463,112 @@ export type EgError_Deserialize =
  *  Path is not a Git repository (or cannot be opened). `detail` carries
  *  the underlying libgit2/IO message when there is one.
  */
-({ code: "repo_not_found"; path: string; detail: string | null }) & { confirm_required?: never; context?: never; exists?: never; feature?: never; kind?: never; paths?: never; provider?: never; state?: never; target?: never; url?: never } | 
+({ code: "repo_not_found"; path: string; detail: string | null }) & { changed?: never; confirm_required?: never; context?: never; exists?: never; feature?: never; fingerprint?: never; host?: never; key_type?: never; kind?: never; paths?: never; port?: never; provider?: never; state?: never; target?: never; url?: never } | 
 /**
  *  SSH remote directory exists but is not a Git repository (and the user
  *  has not initialized one yet). The frontend uses `exists` to offer a
  *  guided `git init`; a missing path stays under `RepoNotFound` to avoid
  *  inviting the user to create something that was simply mistyped.
  */
-({ code: "ssh_not_a_repo"; target: SshTarget; exists: boolean; detail: string | null }) & { confirm_required?: never; context?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; url?: never } | 
+({ code: "ssh_not_a_repo"; target: SshTarget; exists: boolean; detail: string | null }) & { changed?: never; confirm_required?: never; context?: never; feature?: never; fingerprint?: never; host?: never; key_type?: never; kind?: never; path?: never; paths?: never; port?: never; provider?: never; state?: never; url?: never } | 
 /**
  *  The repository exists but its folder is owned by another user, and the
  *  real git CLI agrees with the refusal (libgit2-only refusals are aligned
  *  away silently in eg-git-core). The user must explicitly allow the
  *  folder via `safe.directory`.
  */
-({ code: "repo_ownership"; path: string; detail: string | null }) & { confirm_required?: never; context?: never; exists?: never; feature?: never; kind?: never; paths?: never; provider?: never; state?: never; target?: never; url?: never } | 
+({ code: "repo_ownership"; path: string; detail: string | null }) & { changed?: never; confirm_required?: never; context?: never; exists?: never; feature?: never; fingerprint?: never; host?: never; key_type?: never; kind?: never; paths?: never; port?: never; provider?: never; state?: never; target?: never; url?: never } | 
 /**  The worktree has uncommitted changes that the operation would clobber. */
-({ code: "dirty_worktree"; paths: string[] }) & { confirm_required?: never; context?: never; detail?: never; exists?: never; feature?: never; kind?: never; path?: never; provider?: never; state?: never; target?: never; url?: never } | 
+({ code: "dirty_worktree"; paths: string[] }) & { changed?: never; confirm_required?: never; context?: never; detail?: never; exists?: never; feature?: never; fingerprint?: never; host?: never; key_type?: never; kind?: never; path?: never; port?: never; provider?: never; state?: never; target?: never; url?: never } | 
 /**
  *  Remote connection failed; `kind` distinguishes dns/timeout/proxy.
  *  `detail` carries the redacted git stderr tail (the actual reason).
  */
-({ code: "network"; kind: string; url: string; detail: string | null }) & { confirm_required?: never; context?: never; exists?: never; feature?: never; path?: never; paths?: never; provider?: never; state?: never; target?: never } | 
-/**  Remote rejected our credentials. */
-({ code: "auth"; provider: string; detail: string | null }) & { confirm_required?: never; context?: never; exists?: never; feature?: never; kind?: never; path?: never; paths?: never; state?: never; target?: never; url?: never } | 
+({ code: "network"; kind: string; url: string; detail: string | null }) & { changed?: never; confirm_required?: never; context?: never; exists?: never; feature?: never; fingerprint?: never; host?: never; key_type?: never; path?: never; paths?: never; port?: never; provider?: never; state?: never; target?: never } | 
+/**
+ *  Remote rejected our credentials. SSH failures carry the target host so
+ *  the frontend can route them to the SSH setup wizard instead of the
+ *  HTTPS username/password dialog.
+ */
+({ code: "auth"; provider: string; host: string | null; detail: string | null }) & { changed?: never; confirm_required?: never; context?: never; exists?: never; feature?: never; fingerprint?: never; key_type?: never; kind?: never; path?: never; paths?: never; port?: never; state?: never; target?: never; url?: never } | 
+/**
+ *  The server's SSH host key is not trusted yet (first connection) or no
+ *  longer matches `known_hosts` (possible MITM). The UI must show the
+ *  fingerprint and let the user confirm before anything is written;
+ *  `changed` distinguishes the dangerous direction.
+ */
+({ code: "ssh_host_key"; host: string; port: number; changed: boolean; fingerprint: string | null; key_type: string | null; detail: string | null }) & { confirm_required?: never; context?: never; exists?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; target?: never; url?: never } | 
 /**  Repository is mid-merge/rebase with unresolved conflicts. */
-({ code: "conflict_state"; state: string; detail: string | null }) & { confirm_required?: never; context?: never; exists?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; target?: never; url?: never } | 
+({ code: "conflict_state"; state: string; detail: string | null }) & { changed?: never; confirm_required?: never; context?: never; exists?: never; feature?: never; fingerprint?: never; host?: never; key_type?: never; kind?: never; path?: never; paths?: never; port?: never; provider?: never; target?: never; url?: never } | 
 /**  Destructive operation requires an explicit UI confirmation round-trip. */
-({ code: "unsafe_operation"; confirm_required: string }) & { context?: never; detail?: never; exists?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; target?: never; url?: never } | 
+({ code: "unsafe_operation"; confirm_required: string }) & { changed?: never; context?: never; detail?: never; exists?: never; feature?: never; fingerprint?: never; host?: never; key_type?: never; kind?: never; path?: never; paths?: never; port?: never; provider?: never; state?: never; target?: never; url?: never } | 
 /**  Feature exists in the model but is not implemented yet. */
-({ code: "not_supported"; feature: string }) & { confirm_required?: never; context?: never; detail?: never; exists?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; target?: never; url?: never } | 
+({ code: "not_supported"; feature: string }) & { changed?: never; confirm_required?: never; context?: never; detail?: never; exists?: never; fingerprint?: never; host?: never; key_type?: never; kind?: never; path?: never; paths?: never; port?: never; provider?: never; state?: never; target?: never; url?: never } | 
 /**
  *  The `git` executable is not available on PATH (PRD §7: EasyGit never
  *  bundles git; the UI guides the user through installing it instead).
  */
-({ code: "git_missing" }) & { confirm_required?: never; context?: never; detail?: never; exists?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; target?: never; url?: never } | 
+({ code: "git_missing" }) & { changed?: never; confirm_required?: never; context?: never; detail?: never; exists?: never; feature?: never; fingerprint?: never; host?: never; key_type?: never; kind?: never; path?: never; paths?: never; port?: never; provider?: never; state?: never; target?: never; url?: never } | 
 /**  A long task was cancelled by the user. */
-({ code: "cancelled" }) & { confirm_required?: never; context?: never; detail?: never; exists?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; target?: never; url?: never } | 
+({ code: "cancelled" }) & { changed?: never; confirm_required?: never; context?: never; detail?: never; exists?: never; feature?: never; fingerprint?: never; host?: never; key_type?: never; kind?: never; path?: never; paths?: never; port?: never; provider?: never; state?: never; target?: never; url?: never } | 
 /**  Anything unexpected; `context` lands in the local log file. */
-({ code: "internal"; context: string }) & { confirm_required?: never; detail?: never; exists?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; target?: never; url?: never };
+({ code: "internal"; context: string }) & { changed?: never; confirm_required?: never; detail?: never; exists?: never; feature?: never; fingerprint?: never; host?: never; key_type?: never; kind?: never; path?: never; paths?: never; port?: never; provider?: never; state?: never; target?: never; url?: never };
 
 export type EgError_Serialize = 
 /**
  *  Path is not a Git repository (or cannot be opened). `detail` carries
  *  the underlying libgit2/IO message when there is one.
  */
-({ code: "repo_not_found"; path: string; detail?: string | null }) & { confirm_required?: never; context?: never; exists?: never; feature?: never; kind?: never; paths?: never; provider?: never; state?: never; target?: never; url?: never } | 
+({ code: "repo_not_found"; path: string; detail?: string | null }) & { changed?: never; confirm_required?: never; context?: never; exists?: never; feature?: never; fingerprint?: never; host?: never; key_type?: never; kind?: never; paths?: never; port?: never; provider?: never; state?: never; target?: never; url?: never } | 
 /**
  *  SSH remote directory exists but is not a Git repository (and the user
  *  has not initialized one yet). The frontend uses `exists` to offer a
  *  guided `git init`; a missing path stays under `RepoNotFound` to avoid
  *  inviting the user to create something that was simply mistyped.
  */
-({ code: "ssh_not_a_repo"; target: SshTarget; exists: boolean; detail?: string | null }) & { confirm_required?: never; context?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; url?: never } | 
+({ code: "ssh_not_a_repo"; target: SshTarget; exists: boolean; detail?: string | null }) & { changed?: never; confirm_required?: never; context?: never; feature?: never; fingerprint?: never; host?: never; key_type?: never; kind?: never; path?: never; paths?: never; port?: never; provider?: never; state?: never; url?: never } | 
 /**
  *  The repository exists but its folder is owned by another user, and the
  *  real git CLI agrees with the refusal (libgit2-only refusals are aligned
  *  away silently in eg-git-core). The user must explicitly allow the
  *  folder via `safe.directory`.
  */
-({ code: "repo_ownership"; path: string; detail?: string | null }) & { confirm_required?: never; context?: never; exists?: never; feature?: never; kind?: never; paths?: never; provider?: never; state?: never; target?: never; url?: never } | 
+({ code: "repo_ownership"; path: string; detail?: string | null }) & { changed?: never; confirm_required?: never; context?: never; exists?: never; feature?: never; fingerprint?: never; host?: never; key_type?: never; kind?: never; paths?: never; port?: never; provider?: never; state?: never; target?: never; url?: never } | 
 /**  The worktree has uncommitted changes that the operation would clobber. */
-({ code: "dirty_worktree"; paths: string[] }) & { confirm_required?: never; context?: never; detail?: never; exists?: never; feature?: never; kind?: never; path?: never; provider?: never; state?: never; target?: never; url?: never } | 
+({ code: "dirty_worktree"; paths: string[] }) & { changed?: never; confirm_required?: never; context?: never; detail?: never; exists?: never; feature?: never; fingerprint?: never; host?: never; key_type?: never; kind?: never; path?: never; port?: never; provider?: never; state?: never; target?: never; url?: never } | 
 /**
  *  Remote connection failed; `kind` distinguishes dns/timeout/proxy.
  *  `detail` carries the redacted git stderr tail (the actual reason).
  */
-({ code: "network"; kind: string; url: string; detail?: string | null }) & { confirm_required?: never; context?: never; exists?: never; feature?: never; path?: never; paths?: never; provider?: never; state?: never; target?: never } | 
-/**  Remote rejected our credentials. */
-({ code: "auth"; provider: string; detail?: string | null }) & { confirm_required?: never; context?: never; exists?: never; feature?: never; kind?: never; path?: never; paths?: never; state?: never; target?: never; url?: never } | 
+({ code: "network"; kind: string; url: string; detail?: string | null }) & { changed?: never; confirm_required?: never; context?: never; exists?: never; feature?: never; fingerprint?: never; host?: never; key_type?: never; path?: never; paths?: never; port?: never; provider?: never; state?: never; target?: never } | 
+/**
+ *  Remote rejected our credentials. SSH failures carry the target host so
+ *  the frontend can route them to the SSH setup wizard instead of the
+ *  HTTPS username/password dialog.
+ */
+({ code: "auth"; provider: string; host?: string | null; detail?: string | null }) & { changed?: never; confirm_required?: never; context?: never; exists?: never; feature?: never; fingerprint?: never; key_type?: never; kind?: never; path?: never; paths?: never; port?: never; state?: never; target?: never; url?: never } | 
+/**
+ *  The server's SSH host key is not trusted yet (first connection) or no
+ *  longer matches `known_hosts` (possible MITM). The UI must show the
+ *  fingerprint and let the user confirm before anything is written;
+ *  `changed` distinguishes the dangerous direction.
+ */
+({ code: "ssh_host_key"; host: string; port: number; changed: boolean; fingerprint?: string | null; key_type?: string | null; detail?: string | null }) & { confirm_required?: never; context?: never; exists?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; target?: never; url?: never } | 
 /**  Repository is mid-merge/rebase with unresolved conflicts. */
-({ code: "conflict_state"; state: string; detail?: string | null }) & { confirm_required?: never; context?: never; exists?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; target?: never; url?: never } | 
+({ code: "conflict_state"; state: string; detail?: string | null }) & { changed?: never; confirm_required?: never; context?: never; exists?: never; feature?: never; fingerprint?: never; host?: never; key_type?: never; kind?: never; path?: never; paths?: never; port?: never; provider?: never; target?: never; url?: never } | 
 /**  Destructive operation requires an explicit UI confirmation round-trip. */
-({ code: "unsafe_operation"; confirm_required: string }) & { context?: never; detail?: never; exists?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; target?: never; url?: never } | 
+({ code: "unsafe_operation"; confirm_required: string }) & { changed?: never; context?: never; detail?: never; exists?: never; feature?: never; fingerprint?: never; host?: never; key_type?: never; kind?: never; path?: never; paths?: never; port?: never; provider?: never; state?: never; target?: never; url?: never } | 
 /**  Feature exists in the model but is not implemented yet. */
-({ code: "not_supported"; feature: string }) & { confirm_required?: never; context?: never; detail?: never; exists?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; target?: never; url?: never } | 
+({ code: "not_supported"; feature: string }) & { changed?: never; confirm_required?: never; context?: never; detail?: never; exists?: never; fingerprint?: never; host?: never; key_type?: never; kind?: never; path?: never; paths?: never; port?: never; provider?: never; state?: never; target?: never; url?: never } | 
 /**
  *  The `git` executable is not available on PATH (PRD §7: EasyGit never
  *  bundles git; the UI guides the user through installing it instead).
  */
-({ code: "git_missing" }) & { confirm_required?: never; context?: never; detail?: never; exists?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; target?: never; url?: never } | 
+({ code: "git_missing" }) & { changed?: never; confirm_required?: never; context?: never; detail?: never; exists?: never; feature?: never; fingerprint?: never; host?: never; key_type?: never; kind?: never; path?: never; paths?: never; port?: never; provider?: never; state?: never; target?: never; url?: never } | 
 /**  A long task was cancelled by the user. */
-({ code: "cancelled" }) & { confirm_required?: never; context?: never; detail?: never; exists?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; target?: never; url?: never } | 
+({ code: "cancelled" }) & { changed?: never; confirm_required?: never; context?: never; detail?: never; exists?: never; feature?: never; fingerprint?: never; host?: never; key_type?: never; kind?: never; path?: never; paths?: never; port?: never; provider?: never; state?: never; target?: never; url?: never } | 
 /**  Anything unexpected; `context` lands in the local log file. */
-({ code: "internal"; context: string }) & { confirm_required?: never; detail?: never; exists?: never; feature?: never; kind?: never; path?: never; paths?: never; provider?: never; state?: never; target?: never; url?: never };
+({ code: "internal"; context: string }) & { changed?: never; confirm_required?: never; detail?: never; exists?: never; feature?: never; fingerprint?: never; host?: never; key_type?: never; kind?: never; path?: never; paths?: never; port?: never; provider?: never; state?: never; target?: never; url?: never };
 
 /**
  *  Environment probe result (PRD §7: detect system git ≥ 2.30, guide the
@@ -722,6 +763,39 @@ export type SshCredentialsOverview = {
 	homeDir: string | null,
 	/**  True when `~/.ssh` exists. Drives the UI's empty-state message. */
 	sshDirPresent: boolean,
+	/**  `ssh -V` first line, when the OpenSSH client answers. */
+	sshVersion: string | null,
+	/**  Effective key directory (`~/.ssh`). */
+	keyDir: string | null,
+	/**  The known_hosts file ssh itself resolves for a host. */
+	knownHostsPath: string | null,
+	/**  True when the ssh-family tools needed by the setup wizard are present. */
+	toolsAvailable: boolean,
+};
+
+/**
+ *  Request for `ssh_key_generate`. The wizard only generates the default
+ *  `id_ed25519` key (no passphrase, so SSH can use it without an agent);
+ *  existing keys are never overwritten.
+ */
+export type SshGenerateKeyRequest = {
+	/**  File name under `~/.ssh`; defaults to `id_ed25519`. */
+	name: string | null,
+	/**  Public-key comment; defaults to `EasyGit`. */
+	comment: string | null,
+};
+
+/**
+ *  One server host key offered by `ssh-keyscan`, already fingerprinted. The
+ *  UI shows this before writing anything to known_hosts.
+ */
+export type SshHostKeyInfo = {
+	host: string,
+	port: number,
+	/**  Algorithm as reported by ssh-keygen, e.g. `ED25519`, `RSA`. */
+	keyType: string,
+	/**  SHA256 fingerprint (modern OpenSSH) as printed by `ssh-keygen -lf`. */
+	fingerprint: string,
 };
 
 /**

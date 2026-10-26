@@ -18,6 +18,8 @@ const remoteBranchListMock = vi.fn<(...args: unknown[]) => unknown>();
 const undoRedoMock = vi.fn<(...args: unknown[]) => unknown>();
 const redoMock = vi.fn<(...args: unknown[]) => unknown>();
 const undoOpMock = vi.fn<(...args: unknown[]) => unknown>();
+const branchListMock = vi.fn<(...args: unknown[]) => unknown>(async () => []);
+const setUpstreamMock = vi.fn<(...args: unknown[]) => unknown>(async () => ({}));
 
 vi.mock('../lib/ipc/commands', async (importOriginal) => {
   const original = await importOriginal<Record<string, unknown>>();
@@ -31,6 +33,8 @@ vi.mock('../lib/ipc/commands', async (importOriginal) => {
     undoRedoState: (...args: unknown[]) => undoRedoMock(...args),
     redoOperation: (...args: unknown[]) => redoMock(...args),
     undoOperation: (...args: unknown[]) => undoOpMock(...args),
+    branchList: (...args: unknown[]) => branchListMock(...args),
+    branchSetUpstream: (...args: unknown[]) => setUpstreamMock(...args),
     mergeStateGet: vi.fn(async () => null),
     formatIpcError: vi.fn(() => ({ title: 'err', detail: '' })),
     isTauriAvailable: () => true,
@@ -61,8 +65,10 @@ beforeEach(() => {
   clearCachedCredentials();
   useToastStore.setState({ toasts: [] });
   useRepoStore.getState().seed({ activeId: 'r1' });
+  localStorage.clear();
   useSyncStore.setState({
     remotes: [remote()],
+    selectedRemote: null,
     remoteBranches: ['origin/main'],
     timeline: [],
     undoRedo: null,
@@ -192,6 +198,59 @@ describe('syncStore push', () => {
     const result = await pending;
     expect(result).toBe('cancelled');
     expect(useToastStore.getState().toasts).toHaveLength(0);
+  });
+});
+
+describe('syncStore remote selection & push all', () => {
+  it('prefers the persisted remote over origin', async () => {
+    localStorage.setItem('eg.sync.remote.r1', 'mirror');
+    remoteListMock.mockResolvedValue([remote(), remote({ name: 'mirror' })]);
+    remoteBranchListMock.mockResolvedValue(['origin/main']);
+    undoRedoMock.mockResolvedValue(null);
+    await useSyncStore.getState().refresh();
+    expect(useSyncStore.getState().selectedRemote).toBe('mirror');
+  });
+
+  it('falls back to the current branch upstream, then origin', async () => {
+    remoteListMock.mockResolvedValue([remote(), remote({ name: 'fork' })]);
+    remoteBranchListMock.mockResolvedValue([]);
+    undoRedoMock.mockResolvedValue(null);
+    branchListMock.mockResolvedValue([{ name: 'main', isCurrent: true, upstream: 'fork/main' }]);
+    await useSyncStore.getState().refresh();
+    expect(useSyncStore.getState().selectedRemote).toBe('fork');
+  });
+
+  it('pushAll targets the selected remote first and reports every result', async () => {
+    useSyncStore.setState({
+      remotes: [remote(), remote({ name: 'mirror' })],
+      selectedRemote: 'mirror',
+    });
+    pushMock.mockResolvedValue(cleanStatus());
+    const results = await useSyncStore.getState().pushAll('main');
+    expect(pushMock.mock.calls.map((call) => call[1])).toEqual(['mirror', 'origin']);
+    expect(results).toEqual([
+      { remote: 'mirror', status: 'ok' },
+      { remote: 'origin', status: 'ok' },
+    ]);
+  });
+
+  it('a rejected remote does not stop the remaining push-all targets', async () => {
+    useSyncStore.setState({
+      remotes: [remote(), remote({ name: 'mirror' })],
+      selectedRemote: null,
+    });
+    pushMock
+      .mockRejectedValueOnce({ code: 'conflict_state', state: 'rejected' })
+      .mockResolvedValueOnce(cleanStatus());
+    const results = await useSyncStore.getState().pushAll('main');
+    expect(results.map((result) => result.status)).toEqual(['rejected', 'ok']);
+  });
+
+  it('sets the upstream only when the branch has none', async () => {
+    branchListMock.mockResolvedValue([{ name: 'main', isCurrent: true, upstream: 'origin/main' }]);
+    pushMock.mockResolvedValue(cleanStatus());
+    await useSyncStore.getState().push('mirror', 'main', false);
+    expect(setUpstreamMock).not.toHaveBeenCalled();
   });
 });
 

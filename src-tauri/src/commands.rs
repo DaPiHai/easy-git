@@ -8,8 +8,8 @@ use eg_types::{
     AppVersion, BranchInfo, CommitDetail, CommitOutcome, CommitRequest, ConfigScope, ConflictFile,
     DiffRequest, DiffResponse, EgError, EnvStatus, IgnoreMode, LogFilter, LogPage, MergeOutcome,
     MergeState, PushCredentials, RemoteInfo, RepoSummary, ResetMode, ResetOutcome,
-    SshCredentialsOverview, StageLinesRequest, StageMode, StashEntry, StatusReport, SyncStrategy,
-    TagInfo, TimelineEntry, UndoRedoState,
+    SshCredentialsOverview, SshGenerateKeyRequest, SshHostKeyInfo, SshPublicKey, StageLinesRequest,
+    StageMode, StashEntry, StatusReport, SyncStrategy, TagInfo, TimelineEntry, UndoRedoState,
 };
 use tauri::{AppHandle, State};
 use tauri_specta::Event;
@@ -801,6 +801,48 @@ pub async fn ssh_browse_dir(location: String, dir: String) -> Result<Vec<String>
 #[specta::specta]
 pub async fn ssh_credentials_overview() -> Result<SshCredentialsOverview, EgError> {
     run_blocking(eg_git_core::ssh::ssh_credentials_overview).await
+}
+
+/// Probing a server's host key for the "confirm fingerprint" dialog. No
+/// known_hosts write happens here; the user must confirm first.
+#[tauri::command]
+#[specta::specta]
+pub async fn ssh_probe_host_key(host: String, port: u16) -> Result<SshHostKeyInfo, EgError> {
+    run_blocking(move || eg_git_core::ssh::probe_host_key(&host, port)).await
+}
+
+/// Writes the confirmed fingerprint into known_hosts (after re-probing and
+/// comparing), then returns the probed key for the success toast.
+#[tauri::command]
+#[specta::specta]
+pub async fn ssh_trust_host_key(
+    host: String,
+    port: u16,
+    fingerprint: String,
+) -> Result<SshHostKeyInfo, EgError> {
+    run_blocking(move || eg_git_core::ssh::trust_host_key(&host, port, &fingerprint)).await
+}
+
+/// Generates the default ed25519 key for the SSH wizard (no passphrase so
+/// ssh can use it without an agent; never overwrites an existing file).
+#[tauri::command]
+#[specta::specta]
+pub async fn ssh_generate_key(request: SshGenerateKeyRequest) -> Result<SshPublicKey, EgError> {
+    run_blocking(move || eg_git_core::ssh::generate_key(&request)).await
+}
+
+/// Reads a public key (`~/.ssh/*.pub`) for the copy-to-clipboard action.
+#[tauri::command]
+#[specta::specta]
+pub async fn ssh_public_key(path: String) -> Result<String, EgError> {
+    run_blocking(move || eg_git_core::ssh::public_key(&path)).await
+}
+
+/// Runs `ssh -T git@github.com` and returns the authenticated username.
+#[tauri::command]
+#[specta::specta]
+pub async fn ssh_test_github() -> Result<String, EgError> {
+    run_blocking(eg_git_core::ssh::test_github_login).await
 }
 
 #[tauri::command]

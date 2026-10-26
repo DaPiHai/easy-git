@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { reportError } from '../lib/ipc/report';
+import { withHostKeyTrust } from './sshStore';
 import {
   cleanExecute,
   closeRepo,
@@ -237,7 +238,7 @@ export const useRepoStore = create<RepoState>()((set, get) => {
     },
 
     openByPathReturning: async (path) => {
-      const summary = await openRepoIpc(path);
+      const summary = await withHostKeyTrust(() => openRepoIpc(path));
       maybeOfferGitignore(summary);
       set((s) => ({ repos: { ...s.repos, [summary.repoId]: summary } }));
       putRecent(summary);

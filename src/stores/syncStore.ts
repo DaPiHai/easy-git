@@ -1,7 +1,9 @@
 import { create } from 'zustand';
 import { reportError } from '../lib/ipc/report';
+import { withHostKeyTrust } from './sshStore';
 import { t } from '../lib/i18n';
 import {
+  branchList,
   branchSetUpstream,
   fetchRemote as fetchRemoteIpc,
   formatIpcError,
@@ -77,6 +79,8 @@ export function credentialsKey(repoId: string, remote: string): string {
 
 interface SyncStoreState {
   remotes: RemoteInfo[];
+  /** Currently targeted remote for fetch/pull/push (persisted per repo). */
+  selectedRemote: string | null;
   /** `origin/main` style short names for the set-upstream dialog. */
   remoteBranches: string[];
   timeline: TimelineEntry[];
@@ -89,6 +93,8 @@ interface SyncStoreState {
 
   /** Loads remotes, remote branches and the undo/redo state. */
   refresh: () => Promise<void>;
+  /** Persists the remote used by the sync buttons for this repository. */
+  setSelectedRemote: (remote: string) => void;
   /** Loads the merged reflog + op-log feed (F-28). */
   refreshTimeline: () => Promise<void>;
   /** Subscribes to sync://progress (call once at shell mount). */
@@ -107,7 +113,10 @@ interface SyncStoreState {
     remote: string,
     branch: string,
     force: boolean,
+    silent?: boolean,
   ) => Promise<'ok' | 'rejected' | 'auth' | 'cancelled' | 'error'>;
+  /** Pushes the current branch to every remote (non-force, sequential). */
+  pushAll: (branch: string) => Promise<Array<{ remote: string; status: string }>>;
   testRemote: (name: string) => Promise<number | null>;
   addRemote: (name: string, url: string) => Promise<boolean>;
   renameRemote: (oldName: string, newName: string) => Promise<boolean>;
@@ -122,8 +131,24 @@ interface SyncStoreState {
   clear: () => void;
 }
 
-export const useSyncStore = create<SyncStoreState>((set, get) => ({
+const remoteStorageKey = (repoId: string): string => `eg.sync.remote.${repoId}`;
+
+/** Binds a branch with no upstream to the remote it was just pushed to. */
+async function maybeSetUpstream(repoId: string, branch: string, remote: string): Promise<void> {
+  try {
+    const branches = await branchList(repoId);
+    const current = branches.find((entry) => entry.isCurrent);
+    if (current && !current.upstream) {
+      await branchSetUpstream(repoId, branch, `${remote}/${branch}`);
+    }
+  } catch {
+    // Upstream is a convenience; a failure must not fail the push.
+  }
+}
+
+export const useSyncStore = create<SyncStoreState>()((set, get) => ({
   remotes: [],
+  selectedRemote: null,
   remoteBranches: [],
   timeline: [],
   undoRedo: null,
@@ -136,7 +161,7 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
     if (!isTauriAvailable()) return; // seed/test seam
     const { activeId } = useRepoStore.getState();
     if (!activeId) {
-      set({ remotes: [], remoteBranches: [], undoRedo: null });
+      set({ remotes: [], selectedRemote: null, remoteBranches: [], undoRedo: null });
       return;
     }
     try {
@@ -145,10 +170,43 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
         remoteBranchList(activeId),
         undoRedoState(activeId),
       ]);
-      set({ remotes, remoteBranches: branches, undoRedo: state, error: null });
+      const saved =
+        typeof localStorage === 'undefined'
+          ? null
+          : localStorage.getItem(remoteStorageKey(activeId));
+      let selected = remotes.find((remote) => remote.name === saved)?.name ?? null;
+      if (!selected && remotes.length > 1) {
+        // Prefer the current branch's upstream remote when the user has not
+        // picked one yet; the extra branch_list call only happens in that case.
+        try {
+          const list = await branchList(activeId);
+          const current = list.find((branch) => branch.isCurrent);
+          const upstreamRemote = current?.upstream?.split('/')[0] ?? null;
+          selected = remotes.find((remote) => remote.name === upstreamRemote)?.name ?? null;
+        } catch {
+          selected = null;
+        }
+      }
+      selected ??=
+        remotes.find((remote) => remote.name === 'origin')?.name ?? remotes[0]?.name ?? null;
+      set({
+        remotes,
+        remoteBranches: branches,
+        undoRedo: state,
+        selectedRemote: selected,
+        error: null,
+      });
     } catch (error) {
       set({ error: formatIpcError(error as EgErrorLike) });
     }
+  },
+
+  setSelectedRemote: (remote) => {
+    const { activeId } = useRepoStore.getState();
+    if (activeId && typeof localStorage !== 'undefined') {
+      localStorage.setItem(remoteStorageKey(activeId), remote);
+    }
+    set({ selectedRemote: remote });
   },
 
   refreshTimeline: async () => {
@@ -194,7 +252,7 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
     set({ busy: 'fetch' });
     try {
       record(`git fetch ${q(remote)}`);
-      const status = await fetchRemoteIpc(activeId, remote, true);
+      const status = await withHostKeyTrust(() => fetchRemoteIpc(activeId, remote, true));
       await useRepoStore.getState().seed({ status });
       toast.success(t('sync.fetched', { remote }));
       await get().refresh();
@@ -213,7 +271,9 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
     set({ busy: 'pull' });
     try {
       record(`git pull ${q(remote)} ${q(branch)}`);
-      const outcome = await pullRemoteIpc(activeId, remote, branch, strategy);
+      const outcome = await withHostKeyTrust(() =>
+        pullRemoteIpc(activeId, remote, branch, strategy),
+      );
       await useRepoStore.getState().seed({ status: outcome.status });
       if (outcome.conflicts.length > 0) {
         toast.info(t('merge.conflictsParked'));
@@ -240,7 +300,7 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
     }
   },
 
-  push: async (remote, branch, force) => {
+  push: async (remote, branch, force, silent = false) => {
     const { activeId } = useRepoStore.getState();
     if (!activeId || get().busy) return 'error';
     set({ busy: 'push' });
@@ -250,9 +310,16 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
       // First attempt is ambient (system credential helpers); the askpass
       // fallback below only kicks in on an Auth rejection.
       const attempt = async (creds: PushCredentialsInput | null) => {
-        const status = await pushRemoteIpc(activeId, remote, branch, force, creds);
+        const status = await withHostKeyTrust(() =>
+          pushRemoteIpc(activeId, remote, branch, force, creds),
+        );
         await useRepoStore.getState().seed({ status });
-        toast.success(t('sync.pushed', { remote }));
+        if (!silent) {
+          toast.success(t('sync.pushed', { remote }));
+          // First successful push to a remote becomes the branch upstream;
+          // an existing upstream is left alone (mirror pushes stay one-off).
+          await maybeSetUpstream(activeId, branch, remote);
+        }
         await get().refresh();
       };
       try {
@@ -263,7 +330,9 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
         if (raw.code === 'conflict_state') {
           return 'rejected';
         }
-        if (raw.code !== 'auth') {
+        // SSH key failures must not open the HTTPS username/password dialog:
+        // the actionable path is the SSH setup wizard (hint action).
+        if (raw.code !== 'auth' || String(raw.provider ?? '').startsWith('ssh-')) {
           throw error;
         }
         // Auth fallback for legacy HTTPS servers: the cached session
@@ -296,11 +365,42 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
     }
   },
 
+  pushAll: async (branch) => {
+    const { activeId } = useRepoStore.getState();
+    const { remotes, selectedRemote } = get();
+    if (!activeId || get().busy || remotes.length === 0) return [];
+    const ordered = [
+      ...remotes.filter((remote) => remote.name === selectedRemote),
+      ...remotes.filter((remote) => remote.name !== selectedRemote),
+    ];
+    const results: Array<{ remote: string; status: string }> = [];
+    for (const remote of ordered) {
+      const status = await get().push(remote.name, branch, false, true);
+      results.push({ remote: remote.name, status });
+      if (status === 'cancelled') break;
+    }
+    const ok = results.filter((result) => result.status === 'ok').length;
+    const failed = results.filter(
+      (result) => result.status !== 'ok' && result.status !== 'cancelled',
+    );
+    if (failed.length > 0) {
+      toast.error(
+        t('sync.pushAllPartial', { ok, failed: failed.length }),
+        failed.map((result) => result.remote).join('、'),
+      );
+    } else if (results.some((result) => result.status === 'cancelled')) {
+      toast.info(t('sync.pushAllCancelled'));
+    } else {
+      toast.success(t('sync.pushAllDone', { count: ok }));
+    }
+    return results;
+  },
+
   testRemote: async (name) => {
     const { activeId } = useRepoStore.getState();
     if (!activeId) return null;
     try {
-      const count = await remoteTest(activeId, name);
+      const count = await withHostKeyTrust(() => remoteTest(activeId, name));
       toast.success(t('sync.testOk', { count }));
       return count;
     } catch (error) {
@@ -429,6 +529,7 @@ export const useSyncStore = create<SyncStoreState>((set, get) => ({
   clear: () => {
     set({
       remotes: [],
+      selectedRemote: null,
       remoteBranches: [],
       timeline: [],
       undoRedo: null,

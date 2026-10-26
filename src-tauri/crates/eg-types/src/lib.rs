@@ -11,7 +11,7 @@ pub use error::EgError;
 
 pub use ssh::{
     is_ssh_location, parse_ssh_target, RepoLocation, SshAgentStatus, SshCredentialsOverview,
-    SshKeyInfo, SshPublicKey, SshTarget, DEFAULT_SSH_PORT,
+    SshGenerateKeyRequest, SshHostKeyInfo, SshKeyInfo, SshPublicKey, SshTarget, DEFAULT_SSH_PORT,
 };
 
 mod dto;
@@ -77,12 +77,27 @@ mod tests {
 
         let without_detail = serde_json::to_string(&EgError::Auth {
             provider: "git".into(),
+            host: None,
             detail: None,
         })
         .unwrap();
         assert_eq!(
             without_detail, r#"{"code":"auth","provider":"git"}"#,
             "absent detail must not appear as null"
+        );
+
+        let ssh_host_key = serde_json::to_string(&EgError::SshHostKey {
+            host: "github.com".into(),
+            port: 22,
+            changed: true,
+            fingerprint: Some("SHA256:abc".into()),
+            key_type: Some("ED25519".into()),
+            detail: None,
+        })
+        .unwrap();
+        assert_eq!(
+            ssh_host_key,
+            r#"{"code":"ssh_host_key","host":"github.com","port":22,"changed":true,"fingerprint":"SHA256:abc","key_type":"ED25519"}"#,
         );
     }
 

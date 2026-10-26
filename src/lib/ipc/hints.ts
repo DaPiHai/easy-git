@@ -7,6 +7,7 @@
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { appLog } from '../logger';
 import { useMergeStore } from '../../stores/mergeStore';
+import { useSshStore } from '../../stores/sshStore';
 import { useUiStore } from '../../stores/uiStore';
 
 export const GIT_DOWNLOAD_URL = 'https://git-scm.com/downloads';
@@ -35,13 +36,18 @@ export function dispatchHint(action: string): void {
       ui.setView('settings');
       break;
     case 'open-credentials':
-      // 跳到设置页并高亮"身份凭证"分区，让 SSH 认证失败的用户有明确
+      // 跳到设置页并高亮"身份凭证"分区，让 HTTPS 认证失败的用户有明确
       // 落点；高亮状态 2.5 秒后自动清除，不影响下一次触发。
       ui.setView('settings');
       ui.setCredentialsHighlighted(true);
       if (typeof window !== 'undefined') {
         window.setTimeout(() => ui.setCredentialsHighlighted(false), 2500);
       }
+      break;
+    case 'open-ssh-setup':
+      // SSH auth failures get the actionable wizard instead of a read-only
+      // status section: generate/copy a key, open GitHub, verify.
+      useSshStore.getState().setSetupOpen(true);
       break;
     case 'open-git-download':
       openUrl(GIT_DOWNLOAD_URL).catch(() => appLog.warn('hints', `openUrl failed for ${action}`));

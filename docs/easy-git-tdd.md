@@ -363,3 +363,14 @@ IPC 序列化为 `{code, params, message_zh, hint?}`；前端 `lib/ipc/errors.ts
 | 5 | 前端日志漏斗 | `lib/ipc/report.ts reportError()`：humanize + toast(reason+hint) + appLog 一行；repoStore.failLoudly / diffStore / syncStore(11 处) / CommitBox 改走该入口；main.tsx 安装 window error + unhandledrejection 全局钩子 → 新命令 `log_write` → tracing target `web`（与 Rust 同一文件同一格式）。 |
 | 6 | 日志查看器 | 设置页新增「日志」区（LogsPanel）：文件下拉（每日倒序）、级别过滤（条目行按订阅者格式匹配，延续行随条目——过滤错误级保留堆栈）、复制、打开文件夹（opener）；只读，不做终端（PRD §1.5）。IPC 新增 `logs_dir/logs_list/logs_read/log_write`（两处注册表同步，bindings 重生成；数值字段 u32 规避 specta BigInt 禁令）。 |
 | 7 | 凭据脱敏 | eg-types 新增 `sensitive::redact_url/redact_text`（scheme://user:pass@ 保留用户名掩码密码；http(s) 裸 userinfo 视为 token 掩码；ssh/scp 不动），应用于日志行与错误 detail；「秘密不进日志」红线（W10 #9）由代码路径保证。 |
+
+### 2026-10-26 · SSH 首次连接引导与多远端推送偏差记录
+
+| # | 条目 | 说明 |
+| --- | --- | --- |
+| 1 | 根因 | `humanize_network`（本地仓库的 git CLI 网络命令）没有主机指纹分支，`Host key verification failed.` 落到 `EgError::Internal`，前端显示「内部错误」；`Permission denied (publickey)` 又被归为 `Auth{provider:"git"}`，前端弹 HTTPS 用户名/密码框，与 SSH 密钥问题不符。`ssh_credentials_overview` 只读，没有指纹确认/密钥生成通路。 |
+| 2 | 错误模型 | `EgError` 新增 `SshHostKey { host, port, changed, fingerprint?, key_type?, detail? }`（code `ssh_host_key`）；`Auth` 增加可选 `host`。`humanize_network`/`humanize_ssh` 都先判主机指纹与 SSH 公钥失败，再走网络/HTTPS 认证分支；`SshHostKey` 进入 `is_expected()`（用户确认属于控制流，分类器单独 warn）。 |
+| 3 | 主机信任 | 新增 `probe_host_key`（用临时 `UserKnownHostsFile` 让 ssh 自行握手并 pin 主机键，再用 `ssh-keygen -lf` 算指纹）与 `trust_host_key`（重探比对、`ssh-keygen -R` 清旧条目、原子写 known_hosts）；**只有用户点击确认才写入**。changed key 需二次勾选风险确认；探测失败只显示可复制命令，不静默信任。`ssh_run` 对 SSH 远端仓库保留 `StrictHostKeyChecking=accept-new`（不破坏 ProxyJump/ssh config；changed key 仍会弹窗），本地仓库 git CLI 走显式确认。注：Windows OpenSSH 9.5 的 `ssh-keyscan` 对 GitHub 报 unsupported KEX，而 `ssh` 正常，故探测改用 ssh 本身（真机 2026-10-26）。 |
+| 4 | 密钥向导 | `ssh_generate_key` 生成 `~/.ssh/id_ed25519`（ed25519、无口令、权限 600、拒绝覆盖）；`ssh_public_key` 只允许读 `~/.ssh/*.pub`；`ssh_test_github` 解析 `Hi <user>! You've successfully authenticated`（GitHub 成功也退出 1）。前端全局 `SshHostKeyDialog` + `SshSetupDialog`，`withHostKeyTrust` 在信任后自动重试原操作一次；`open-ssh-setup` hint 直达向导。 |
+| 5 | 多远端 | `syncStore.selectedRemote` 按仓库持久化到 `localStorage`（默认：已保存 → 上游远端 → origin → 首个）；同步按钮旁的 `<select>` 决定 fetch/pull/push 目标。`pushAll` 非强推、选中远端优先、单个失败继续、取消即停止，最后一条汇总 toast；单次 push 仅在分支没有上游时自动 `branch_set_upstream`，`pushAll` 不改上游。 |
+| 6 | 测试与边界 | Rust 新增主机指纹/URL 解析/认证错误分类单测；前端新增 sshStore 信任重试、syncStore 选择/全部推送单测。真实 GitHub 检测仍需用户账号做一次手工验收；keychain/口令记忆、HTTPS token 托管仍不在本轮范围。 |

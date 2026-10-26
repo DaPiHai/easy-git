@@ -33,6 +33,9 @@ import {
   type ResetOutcome,
   type RemoteInfo,
   type SshCredentialsOverview,
+  type SshGenerateKeyRequest,
+  type SshHostKeyInfo,
+  type SshPublicKey,
   type StageLinesRequest,
   type StageMode,
   type StatusReport,
@@ -92,6 +95,9 @@ export type {
   DiffSourceKind,
   SelectedHunk,
   SshCredentialsOverview,
+  SshGenerateKeyRequest,
+  SshHostKeyInfo,
+  SshPublicKey,
   SshKeyInfo,
 } from './bindings';
 export type { EgErrorLike, HumanizedError } from './errors';
@@ -618,6 +624,45 @@ export async function browseSshDir(location: string, dir: string): Promise<strin
  */
 export async function getSshCredentialsOverview(): Promise<SshCredentialsOverview> {
   const r = await commands.sshCredentialsOverview();
+  if (r.status === 'error') throw r.error;
+  return r.data;
+}
+
+/** Probes a server's host key for the fingerprint-confirmation dialog. */
+export async function probeSshHostKey(host: string, port: number): Promise<SshHostKeyInfo> {
+  const r = await commands.sshProbeHostKey(host, port);
+  if (r.status === 'error') throw r.error;
+  return r.data;
+}
+
+/** Writes the user-confirmed host fingerprint into known_hosts. */
+export async function trustSshHostKey(
+  host: string,
+  port: number,
+  fingerprint: string,
+): Promise<SshHostKeyInfo> {
+  const r = await commands.sshTrustHostKey(host, port, fingerprint);
+  if (r.status === 'error') throw r.error;
+  return r.data;
+}
+
+/** Generates the default ed25519 key for the SSH wizard. */
+export async function generateSshKey(request: SshGenerateKeyRequest): Promise<SshPublicKey> {
+  const r = await commands.sshGenerateKey(request);
+  if (r.status === 'error') throw r.error;
+  return r.data;
+}
+
+/** Reads a `~/.ssh/*.pub` file for copy-to-clipboard. */
+export async function readSshPublicKey(path: string): Promise<string> {
+  const r = await commands.sshPublicKey(path);
+  if (r.status === 'error') throw r.error;
+  return r.data;
+}
+
+/** Runs `ssh -T git@github.com`; returns the authenticated username. */
+export async function testGithubSsh(): Promise<string> {
+  const r = await commands.sshTestGithub();
   if (r.status === 'error') throw r.error;
   return r.data;
 }

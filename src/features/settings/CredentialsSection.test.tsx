@@ -52,6 +52,10 @@ const overviewRunning: SshCredentialsOverview = {
   ],
   homeDir: 'C:\\Users\\hhdlj',
   sshDirPresent: true,
+  sshVersion: 'OpenSSH_for_Windows_9.5p2',
+  keyDir: 'C:\\Users\\hhdlj\\.ssh',
+  knownHostsPath: 'C:\\Users\\hhdlj\\.ssh\\known_hosts',
+  toolsAvailable: true,
 };
 
 const overviewStopped: SshCredentialsOverview = {
@@ -59,6 +63,10 @@ const overviewStopped: SshCredentialsOverview = {
   publicKeys: [],
   homeDir: 'C:\\Users\\hhdlj',
   sshDirPresent: true,
+  sshVersion: null,
+  keyDir: 'C:\\Users\\hhdlj\\.ssh',
+  knownHostsPath: null,
+  toolsAvailable: false,
 };
 
 const overviewNoSshDir: SshCredentialsOverview = {
@@ -66,6 +74,10 @@ const overviewNoSshDir: SshCredentialsOverview = {
   publicKeys: [],
   homeDir: 'C:\\Users\\hhdlj',
   sshDirPresent: false,
+  sshVersion: null,
+  keyDir: null,
+  knownHostsPath: null,
+  toolsAvailable: false,
 };
 
 beforeEach(() => {
@@ -80,9 +92,7 @@ describe('CredentialsSection (settings 身份凭证)', () => {
     expect(await screen.findByTestId('settings-credentials')).toBeInTheDocument();
     // The Chinese string resolves via i18n at runtime; assert on the data
     // attribute instead so this test stays stable across translation edits.
-    expect(
-      screen.getByTestId('settings-credentials-sock'),
-    ).toHaveTextContent(/agent\.sock/);
+    expect(screen.getByTestId('settings-credentials-sock')).toHaveTextContent(/agent\.sock/);
     const agentKeys = await screen.findByTestId('settings-credentials-agent-keys');
     expect(agentKeys).toHaveTextContent('SHA256:aaa111');
     expect(agentKeys).toHaveTextContent('hhdlj@desktop');
@@ -101,9 +111,7 @@ describe('CredentialsSection (settings 身份凭证)', () => {
     render(<CredentialsSection />);
     // No agent-keys table is rendered; instead an empty-state line appears.
     await waitFor(() => {
-      expect(
-        screen.queryByTestId('settings-credentials-agent-keys'),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByTestId('settings-credentials-agent-keys')).not.toBeInTheDocument();
     });
     const stopped = await screen.findByTestId('settings-credentials-agent-stopped');
     expect(stopped).toHaveTextContent(/ssh-add|terminal/);
@@ -112,9 +120,9 @@ describe('CredentialsSection (settings 身份凭证)', () => {
   it('falls back to the dir-missing message when ~/.ssh does not exist', async () => {
     getSshCredentialsOverviewMock.mockResolvedValue(overviewNoSshDir);
     render(<CredentialsSection />);
-    expect(
-      await screen.findByTestId('settings-credentials-public-keys-empty'),
-    ).toHaveTextContent(/~\/\.ssh/);
+    expect(await screen.findByTestId('settings-credentials-public-keys-empty')).toHaveTextContent(
+      /~\/\.ssh/,
+    );
   });
 
   it('outlines the section when the open-credentials hint highlights it', async () => {
@@ -122,14 +130,12 @@ describe('CredentialsSection (settings 身份凭证)', () => {
     // Wait for the initial fetch to settle, otherwise the empty class
     // check is meaningless.
     await screen.findByTestId('settings-credentials');
-    const beforeClass = document.querySelector('[data-testid="settings-credentials"]')!
-      .className;
+    const beforeClass = document.querySelector('[data-testid="settings-credentials"]')!.className;
     expect(beforeClass).not.toContain('ring-2');
 
     useUiStore.getState().setCredentialsHighlighted(true);
     await waitFor(() => {
-      const afterClass = document.querySelector('[data-testid="settings-credentials"]')!
-        .className;
+      const afterClass = document.querySelector('[data-testid="settings-credentials"]')!.className;
       expect(afterClass).toContain('ring-2');
     });
   });
@@ -141,8 +147,6 @@ describe('CredentialsSection (settings 身份凭证)', () => {
     expect(getSshCredentialsOverviewMock).toHaveBeenCalledTimes(1);
 
     await user.click(screen.getByTestId('settings-credentials-refresh'));
-    await waitFor(() =>
-      expect(getSshCredentialsOverviewMock).toHaveBeenCalledTimes(2),
-    );
+    await waitFor(() => expect(getSshCredentialsOverviewMock).toHaveBeenCalledTimes(2));
   });
 });

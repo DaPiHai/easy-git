@@ -1,9 +1,11 @@
 import { CircleAlert, KeyRound, LoaderCircle, RefreshCw, ShieldCheck, ShieldX } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Button } from '../../components';
 import { t } from '../../lib/i18n';
 import { getSshCredentialsOverview } from '../../lib/ipc/commands';
 import { reportError } from '../../lib/ipc/report';
 import type { SshCredentialsOverview, SshKeyInfo } from '../../lib/ipc/bindings';
+import { useSshStore } from '../../stores/sshStore';
 import { useUiStore } from '../../stores/uiStore';
 
 /**
@@ -88,10 +90,16 @@ export function CredentialsSection() {
             <KeyRound className="size-4 text-ink-subtle" aria-hidden />
             {t('settings.credentials')}
           </h2>
-          <p className="mt-0.5 text-caption text-ink-tertiary">
-            {t('settings.credentials.desc')}
-          </p>
+          <p className="mt-0.5 text-caption text-ink-tertiary">{t('settings.credentials.desc')}</p>
         </div>
+        <Button
+          variant="primary"
+          size="sm"
+          data-testid="settings-ssh-setup"
+          onClick={() => useSshStore.getState().setSetupOpen(true)}
+        >
+          {t('ssh.setup.open')}
+        </Button>
         <button
           type="button"
           data-testid="settings-credentials-refresh"
@@ -205,12 +213,7 @@ function PublicKeysBlock({
         {t('settings.credentials.publicKeys')}
       </h3>
       {keys.length > 0 ? (
-        <KeyList
-          testId="settings-credentials-public-keys"
-          keys={keys}
-          caption={null}
-          showPath
-        />
+        <KeyList testId="settings-credentials-public-keys" keys={keys} caption={null} showPath />
       ) : (
         <p
           data-testid="settings-credentials-public-keys-empty"
@@ -244,9 +247,7 @@ function KeyList({
             <th className="px-3 py-1.5 font-medium">{t('settings.credentials.fingerprint')}</th>
             <th className="px-3 py-1.5 font-medium">{t('settings.credentials.comment')}</th>
             <th className="px-3 py-1.5 font-medium">{t('settings.credentials.type')}</th>
-            {showPath ? (
-              <th className="px-3 py-1.5 font-medium">path</th>
-            ) : null}
+            {showPath ? <th className="px-3 py-1.5 font-medium">path</th> : null}
           </tr>
         </thead>
         <tbody>

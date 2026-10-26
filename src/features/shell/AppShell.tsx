@@ -15,6 +15,8 @@ import { SshDialog } from '../repo/SshDialog';
 import { InitGitignoreDialog } from '../repo/InitGitignoreDialog';
 import { GitMissingNotice } from '../repo/GitMissingNotice';
 import { CredentialsDialog } from './CredentialsDialog';
+import { SshHostKeyDialog } from './SshHostKeyDialog';
+import { SshSetupDialog } from './SshSetupDialog';
 import { ConflictWizard } from '../conflicts/ConflictWizard';
 import { useMergeStore } from '../../stores/mergeStore';
 import { useSyncStore } from '../../stores/syncStore';
@@ -107,6 +109,8 @@ export function AppShell() {
       <SshDialog />
       <InitGitignoreDialog />
       <CredentialsDialog />
+      <SshHostKeyDialog />
+      <SshSetupDialog />
       <ToastHost />
     </div>
   );

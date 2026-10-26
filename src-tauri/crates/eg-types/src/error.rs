@@ -48,9 +48,28 @@ pub enum EgError {
         #[serde(skip_serializing_if = "Option::is_none")]
         detail: Option<String>,
     },
-    /// Remote rejected our credentials.
+    /// Remote rejected our credentials. SSH failures carry the target host so
+    /// the frontend can route them to the SSH setup wizard instead of the
+    /// HTTPS username/password dialog.
     Auth {
         provider: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        host: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        detail: Option<String>,
+    },
+    /// The server's SSH host key is not trusted yet (first connection) or no
+    /// longer matches `known_hosts` (possible MITM). The UI must show the
+    /// fingerprint and let the user confirm before anything is written;
+    /// `changed` distinguishes the dangerous direction.
+    SshHostKey {
+        host: String,
+        port: u16,
+        changed: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        fingerprint: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        key_type: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         detail: Option<String>,
     },
@@ -87,6 +106,7 @@ impl EgError {
             EgError::DirtyWorktree { .. } => "dirty_worktree",
             EgError::Network { .. } => "network",
             EgError::Auth { .. } => "auth",
+            EgError::SshHostKey { .. } => "ssh_host_key",
             EgError::ConflictState { .. } => "conflict_state",
             EgError::UnsafeOperation { .. } => "unsafe_operation",
             EgError::NotSupported { .. } => "not_supported",
@@ -107,7 +127,11 @@ impl EgError {
                 | EgError::ConflictState { .. }
                 | EgError::UnsafeOperation { .. }
                 | EgError::NotSupported { .. }
+                | EgError::SshHostKey { .. }
                 | EgError::Cancelled
+        ) || matches!(
+            self,
+            EgError::Auth { provider, .. } if provider.starts_with("ssh-")
         )
     }
 }

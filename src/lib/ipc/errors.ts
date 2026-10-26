@@ -14,6 +14,7 @@ export type EgErrorCode =
   | 'dirty_worktree'
   | 'network'
   | 'auth'
+  | 'ssh_host_key'
   | 'conflict_state'
   | 'unsafe_operation'
   | 'not_supported'
@@ -127,18 +128,33 @@ const templates: Record<EgErrorCode, ErrorTemplate> = {
     title: '身份验证失败',
     detail: (p) => {
       switch (String(p.provider ?? '')) {
-        case 'ssh-host-key':
-          return '服务器主机密钥未通过验证：首次连接请在命令行手动连接一次确认指纹；若指纹发生变化，请警惕中间人攻击，先在服务器上核实';
         case 'ssh-key':
-          return 'SSH 密钥认证失败：请确认本机 ssh-agent 正在运行且已加载对应私钥，或检查服务器上 ~/.ssh/authorized_keys';
+          return '服务器拒绝了本机的 SSH 密钥：可能是还没有可用密钥、密钥没有添加到 GitHub，或 ssh-agent 没有加载它。点下面的按钮可以一步步生成/复制密钥并检测连接';
         case 'ssh-passphrase':
-          return 'SSH 私钥需要解锁：请先在 ssh-agent 中解锁该密钥（ssh-add），EasyGit 不直接处理私钥口令';
+          return 'SSH 密钥有口令但还没有解锁：请先在 ssh-agent 中解锁该密钥（ssh-add），EasyGit 不会读取或保存私钥口令';
         default:
           return `${String(p.provider ?? '远程平台')} 拒绝了当前凭据，请更新登录信息`;
       }
     },
     reason: (p) => asString(p.detail),
-    hint: { action: 'open-credentials', label: '管理凭据' },
+    hint: (p) => {
+      const provider = String(p.provider ?? '');
+      return provider.startsWith('ssh-')
+        ? { action: 'open-ssh-setup', label: '配置 SSH 连接' }
+        : { action: 'open-credentials', label: '管理凭据' };
+    },
+  },
+  ssh_host_key: {
+    title: '需要确认服务器身份',
+    detail: (p) => {
+      const host = String(p.host ?? '');
+      const port = Number(p.port ?? 22);
+      const where = port === 22 ? host : `${host}:${port}`;
+      return p.changed
+        ? `服务器 ${where} 的身份与上次记录不一致，可能存在中间人风险；请在弹窗中核对指纹后再决定是否继续`
+        : `首次连接 ${where}，请在弹窗中核对服务器指纹后再继续`;
+    },
+    reason: (p) => asString(p.detail),
   },
   conflict_state: {
     title: '存在未解决的冲突',

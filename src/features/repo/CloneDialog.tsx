@@ -5,6 +5,7 @@ import { t } from '../../lib/i18n';
 import { cloneRepo, pickDirectory } from '../../lib/ipc/commands';
 import { reportError } from '../../lib/ipc/report';
 import { useRepoStore } from '../../stores/repoStore';
+import { useSshStore, withHostKeyTrust } from '../../stores/sshStore';
 import { useSyncStore } from '../../stores/syncStore';
 import { useUiStore } from '../../stores/uiStore';
 import { toast } from '../../stores/toastStore';
@@ -12,6 +13,13 @@ import { toast } from '../../stores/toastStore';
 /** The IPC layer throws the flat EgError shape; only the code matters here. */
 const isAuthError = (error: unknown): boolean =>
   typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 'auth';
+
+/** SSH key rejection: guide to the setup wizard, not the HTTPS credential form. */
+const isSshAuthError = (error: unknown): boolean => {
+  if (!isAuthError(error)) return false;
+  const provider = String((error as { provider?: unknown }).provider ?? '');
+  return provider.startsWith('ssh-');
+};
 
 /**
  * 克隆仓库 dialog (R-22): url + 目标目录, progress rides the sync task strip.
@@ -52,7 +60,9 @@ export function CloneDialog() {
     const credentials =
       username.trim() || password ? { username: username.trim(), password } : null;
     try {
-      const summary = await cloneRepo(url.trim(), target.trim(), credentials);
+      const summary = await withHostKeyTrust(() =>
+        cloneRepo(url.trim(), target.trim(), credentials),
+      );
       toast.success(t('wizard.clone.done', { name: summary.name }));
       close();
       void useRepoStore.getState().openByPath(summary.path);
@@ -65,8 +75,11 @@ export function CloneDialog() {
         lines.push(humanized.reason);
       }
       setErrorText(lines.filter(Boolean).join('\n'));
-      // auth 类失败（含 GCM 拒绝明文 HTTP、无凭据可问）就地引导填凭据。
-      if (isAuthError(error)) {
+      // SSH 密钥失败走配置向导；HTTPS auth 类失败（含 GCM 拒绝明文 HTTP、
+      // 无凭据可问）就地引导填凭据。
+      if (isSshAuthError(error)) {
+        useSshStore.getState().setSetupOpen(true);
+      } else if (isAuthError(error)) {
         setShowCreds(true);
         setAuthHint(true);
       }

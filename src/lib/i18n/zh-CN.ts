@@ -379,6 +379,14 @@ export const zhCN = {
   'timeline.restoreConfirm': '恢复',
   'sync.restored': '已恢复到目标状态（可撤销）',
   'sync.forceDone': '已强制推送（远端原状已备份，可撤销）',
+  'sync.remote': '同步远端',
+  'sync.pushAll': '推送到全部远端',
+  'sync.pushAllTitle': '推送到全部远端',
+  'sync.pushAllDesc': '将当前分支依次推送到以下远端（不包含强推）；任一远端失败会继续并汇总结果：',
+  'sync.pushAllConfirm': '开始推送',
+  'sync.pushAllDone': '已推送到 {count} 个远端',
+  'sync.pushAllPartial': '{ok} 个成功，{failed} 个失败',
+  'sync.pushAllCancelled': '已取消，剩余远端未推送',
   'tab.timeline': '时间线',
   'tab.remotes': '远程',
   'timeline.kind.commit': '提交',
@@ -445,6 +453,46 @@ export const zhCN = {
   'ssh.error.passphrase': 'SSH 密钥需要解锁',
   'ssh.error.dns': '无法解析服务器地址',
   'remote.disabledOnSsh': '远端仓库不支持此操作',
+
+  'ssh.hostKey.title': '确认服务器身份',
+  'ssh.hostKey.titleChanged': '服务器身份已变化',
+  'ssh.hostKey.first':
+    '首次连接 {host}。请核对下面的服务器指纹；确认后 EasyGit 会把它写入本机 known_hosts，之后不再询问。',
+  'ssh.hostKey.changed':
+    '服务器 {host} 出示的指纹与上次记录不一致，可能存在中间人攻击。请先在服务器上核实，再决定是否继续。',
+  'ssh.hostKey.fingerprint': '服务器指纹',
+  'ssh.hostKey.probing': '正在获取指纹…',
+  'ssh.hostKey.copy': '复制指纹',
+  'ssh.hostKey.copied': '已复制',
+  'ssh.hostKey.type': '密钥类型',
+  'ssh.hostKey.trust': '信任并继续',
+  'ssh.hostKey.ack': '我确认这是预期的服务器变更（例如管理员更换了主机密钥）',
+
+  'ssh.setup.open': '配置 SSH 连接',
+  'ssh.setup.title': 'SSH 连接向导',
+  'ssh.setup.desc':
+    '按步骤完成：检测本机 OpenSSH → 准备密钥 → 添加到 GitHub → 检测连接。EasyGit 不会读取或上传私钥。',
+  'ssh.setup.env': '本机环境',
+  'ssh.setup.recheck': '重新检测',
+  'ssh.setup.version': 'OpenSSH',
+  'ssh.setup.missing': '未检测到 OpenSSH 客户端',
+  'ssh.setup.agent': 'ssh-agent',
+  'ssh.setup.agentRunning': '运行中（已加载 {count} 个密钥）',
+  'ssh.setup.agentStopped': '未运行（无口令密钥不需要 agent）',
+  'ssh.setup.keyDir': '密钥目录',
+  'ssh.setup.loading': '正在检测本机 SSH 环境…',
+  'ssh.setup.keyStep': '准备 SSH 密钥',
+  'ssh.setup.noKey': '还没有可用的 SSH 公钥。',
+  'ssh.setup.generate': '生成 SSH 密钥',
+  'ssh.setup.generateHint':
+    '生成 ~/.ssh/id_ed25519（ed25519、无口令、仅本人可读）。如需口令保护，可先在系统终端自行生成。',
+  'ssh.setup.copy': '复制公钥',
+  'ssh.setup.githubStep': '添加到 GitHub',
+  'ssh.setup.githubDesc':
+    '先复制公钥，再打开 GitHub 的 SSH 设置页，粘贴并保存；完成后回到这里点「检测连接」。',
+  'ssh.setup.openGithub': '复制并打开 GitHub',
+  'ssh.setup.test': '检测 GitHub 连接',
+  'ssh.setup.ok': '连接成功：已认证为 {user}',
 
   // Cross-cutting wait indicator (busyStore): labels for user-initiated
   // write/network operations, shown in the bottom bar while an operation runs.

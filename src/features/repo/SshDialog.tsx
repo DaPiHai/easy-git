@@ -11,6 +11,7 @@ import { appLog } from '../../lib/logger';
 import { reportError } from '../../lib/ipc/report';
 import { humanizeEgError, type EgErrorLike } from '../../lib/ipc/errors';
 import { useRepoStore } from '../../stores/repoStore';
+import { useSshStore, withHostKeyTrust } from '../../stores/sshStore';
 import { useUiStore } from '../../stores/uiStore';
 import { toast } from '../../stores/toastStore';
 
@@ -90,7 +91,7 @@ export function SshDialog() {
     setErrorText(null);
     setLastError(null);
     try {
-      const uri = await testSshConnection(trimmed);
+      const uri = await withHostKeyTrust(() => testSshConnection(trimmed));
       setTestOk(uri);
     } catch (error) {
       showFailure(error, 'ssh-test');
@@ -106,7 +107,7 @@ export function SshDialog() {
     setErrorText(null);
     setLastError(null);
     try {
-      setEntries(await browseSshDir(trimmed, dir));
+      setEntries(await withHostKeyTrust(() => browseSshDir(trimmed, dir)));
     } catch (error) {
       setEntries(null);
       showFailure(error, 'ssh-browse');
@@ -142,7 +143,7 @@ export function SshDialog() {
     setInitializing(true);
     setErrorText(null);
     try {
-      await initSshRepo(trimmed);
+      await withHostKeyTrust(() => initSshRepo(trimmed));
       const summary = await useRepoStore.getState().openByPathReturning(trimmed);
       toast.success(t('wizard.ssh.done', { name: summary.name }));
       close();
@@ -157,6 +158,8 @@ export function SshDialog() {
 
   const canInitHere =
     lastError?.code === 'ssh_not_a_repo' && lastError.exists === true && !initializing;
+  const canSetupSsh =
+    lastError?.code === 'auth' && String(lastError.provider ?? '').startsWith('ssh-');
 
   /** Appends a browsed directory entry to the repo path input. */
   const pickEntry = (entry: string) => {
@@ -280,6 +283,16 @@ export function SshDialog() {
               className="mt-2"
             >
               {initializing ? t('wizard.ssh.initializing') : t('wizard.ssh.initHere')}
+            </Button>
+          ) : null}
+          {canSetupSsh ? (
+            <Button
+              variant="primary"
+              data-testid="ssh-open-setup"
+              onClick={() => useSshStore.getState().setSetupOpen(true)}
+              className="mt-2"
+            >
+              {t('ssh.setup.open')}
             </Button>
           ) : null}
         </div>

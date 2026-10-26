@@ -11,6 +11,8 @@ use std::time::Duration;
 use eg_types::{EgError, PushCredentials, RemoteInfo, SyncStrategy};
 use git2::Repository;
 
+use crate::ssh;
+
 /// Wall-clock budgets for CLI commands (PRD §4.2 timeout handling). Big
 /// fetches are legitimate, so long-running ops get a generous ceiling; only
 /// a wedged process (e.g. a stalled network) ever hits it.
@@ -342,7 +344,23 @@ impl GitCli {
         if ok {
             return Ok(());
         }
-        Err(humanize_network(&stderr, Some(remote)))
+        // The CLI error only names the remote (`origin`); resolve the URL so
+        // SSH host-key/auth failures can carry the host the UI needs.
+        let label = self
+            .remote_url(remote)
+            .unwrap_or_else(|| remote.to_string());
+        Err(humanize_network(&stderr, Some(&label)))
+    }
+
+    /// Fetch URL of a named remote, or the input itself when it already is a
+    /// URL (clone/test callers). Used only to enrich error classification.
+    fn remote_url(&self, remote: &str) -> Option<String> {
+        if remote.contains("://") || (remote.contains(':') && !remote.contains('\\')) {
+            return Some(remote.to_string());
+        }
+        let repo = Repository::open(&self.workdir).ok()?;
+        let found = repo.find_remote(remote).ok()?;
+        found.url().ok().map(str::to_string)
     }
 
     /// Silent idle maintenance (PRD §5.11): full inline `git gc --quiet`
@@ -377,7 +395,10 @@ impl GitCli {
             &CliAuth::default(),
         )?;
         if !ok {
-            return Err(humanize_network(&stderr, Some(remote)));
+            let label = self
+                .remote_url(remote)
+                .unwrap_or_else(|| remote.to_string());
+            return Err(humanize_network(&stderr, Some(&label)));
         }
         let mut out = Vec::new();
         for line in stderr.lines() {
@@ -538,6 +559,31 @@ fn humanize_network(stderr: &str, remote: Option<&str>) -> EgError {
     let tail = eg_types::sensitive::redact_text(&tail);
     tracing::error!(tail = %tail, "network command failed");
     let lower = stderr.to_lowercase();
+    let ssh_target = remote.and_then(ssh::remote_ssh_target);
+
+    // SSH-specific failures first: a host-key prompt has no tty under the
+    // CLI bridge and would otherwise fall through to `internal` (the "内部
+    // 错误" users saw before ever running `ssh -T git@github.com`).
+    if let Some((host, port)) = ssh_target.clone() {
+        if ssh::is_host_key_failure(stderr) {
+            return EgError::SshHostKey {
+                host,
+                port,
+                changed: ssh::is_host_key_changed(stderr),
+                fingerprint: None,
+                key_type: None,
+                detail: Some(tail),
+            };
+        }
+        if ssh::is_ssh_auth_failure(stderr) {
+            return EgError::Auth {
+                provider: "ssh-key".into(),
+                host: Some(host),
+                detail: Some(tail),
+            };
+        }
+    }
+
     if lower.contains("authentication")
         || lower.contains("403")
         || lower.contains("permission denied")
@@ -550,6 +596,7 @@ fn humanize_network(stderr: &str, remote: Option<&str>) -> EgError {
     {
         return EgError::Auth {
             provider: "git".into(),
+            host: ssh_target.map(|(host, _)| host),
             detail: Some(tail),
         };
     }
@@ -794,6 +841,59 @@ mod tests {
                     .contains("could not resolve host"));
             }
             other => panic!("expected network, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn humanize_network_classifies_ssh_host_key() {
+        let err = humanize_network(
+            "Host key verification failed.\nfatal: Could not read from remote repository.",
+            Some("git@github.com:user/repo.git"),
+        );
+        match err {
+            EgError::SshHostKey {
+                host,
+                port,
+                changed,
+                ..
+            } => {
+                assert_eq!(host, "github.com");
+                assert_eq!(port, 22);
+                assert!(!changed);
+            }
+            other => panic!("expected ssh_host_key, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn humanize_network_marks_changed_host_keys() {
+        let err = humanize_network(
+            "@@@ WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED! @@@\nHost key verification failed.",
+            Some("ssh://git@example.com:2222/repo.git"),
+        );
+        assert!(matches!(
+            err,
+            EgError::SshHostKey {
+                host,
+                port: 2222,
+                changed: true,
+                ..
+            } if host == "example.com"
+        ));
+    }
+
+    #[test]
+    fn humanize_network_classifies_ssh_publickey_as_ssh_auth() {
+        let err = humanize_network(
+            "git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.",
+            Some("git@github.com:user/repo.git"),
+        );
+        match err {
+            EgError::Auth { provider, host, .. } => {
+                assert_eq!(provider, "ssh-key");
+                assert_eq!(host.as_deref(), Some("github.com"));
+            }
+            other => panic!("expected ssh auth, got {other:?}"),
         }
     }
 

@@ -21,11 +21,13 @@
 //!   logged passes through `sensitive::redact_text`.
 
 use std::io::{BufRead, BufReader};
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 use std::time::Duration;
 
 use eg_types::{
-    EgError, SshAgentStatus, SshCredentialsOverview, SshKeyInfo, SshPublicKey, SshTarget,
+    EgError, SshAgentStatus, SshCredentialsOverview, SshGenerateKeyRequest, SshHostKeyInfo,
+    SshKeyInfo, SshPublicKey, SshTarget, DEFAULT_SSH_PORT,
 };
 
 use super::remote::SyncProgress;
@@ -442,11 +444,13 @@ pub fn humanize_ssh(stderr: &str, uri: &str, target: &SshTarget) -> EgError {
     let lower = stderr.to_lowercase();
     // Host-key problems fail closed: unknown keys (BatchMode refuses the
     // yes/no prompt) and — critically — changed keys (possible MITM).
-    if lower.contains("host key verification failed")
-        || lower.contains("no matching host key type found")
-    {
-        return EgError::Auth {
-            provider: "ssh-host-key".into(),
+    if is_host_key_failure(stderr) {
+        return EgError::SshHostKey {
+            host: target.host.clone(),
+            port: target.port,
+            changed: is_host_key_changed(stderr),
+            fingerprint: None,
+            key_type: None,
             detail: Some(tail),
         };
     }
@@ -482,6 +486,7 @@ pub fn humanize_ssh(stderr: &str, uri: &str, target: &SshTarget) -> EgError {
     {
         return EgError::Auth {
             provider: "ssh-key".into(),
+            host: Some(target.host.clone()),
             detail: Some(tail),
         };
     }
@@ -493,6 +498,7 @@ pub fn humanize_ssh(stderr: &str, uri: &str, target: &SshTarget) -> EgError {
     {
         return EgError::Auth {
             provider: "ssh-passphrase".into(),
+            host: Some(target.host.clone()),
             detail: Some(tail),
         };
     }
@@ -515,6 +521,7 @@ pub fn humanize_ssh(stderr: &str, uri: &str, target: &SshTarget) -> EgError {
     {
         return EgError::Auth {
             provider: "git".into(),
+            host: Some(target.host.clone()),
             detail: Some(tail),
         };
     }
@@ -594,9 +601,684 @@ fn parse_ssh_progress(line: &str) -> SyncProgress {
 /// `timeout` budget.
 const CONNECT_TIMEOUT_SECS: u32 = 15;
 
+// --- Host-key trust / key setup (settings SSH wizard) --------------------
+//
+// These helpers implement the click-only side of first-connection SSH:
+// `ssh-keyscan` probes the server's key, the UI shows its fingerprint, and
+// only an explicit confirm writes known_hosts. Private keys are never read;
+// only the matching `.pub` file is copied to the clipboard.
+
+/// Upper bound for a network probe (`ssh-keyscan`).
+const PROBE_TIMEOUT: Duration = Duration::from_secs(12);
+/// Local ssh-keygen invocations (fingerprinting, key generation).
+const LOCAL_TOOL_TIMEOUT: Duration = Duration::from_secs(20);
+/// RSA generation can be slow on a busy machine.
+const KEYGEN_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// Test/advanced override for a tool name (`EASY_GIT_SSH`,
+/// `EASY_GIT_SSH_KEYGEN`, `EASY_GIT_SSH_KEYSCAN`, `EASY_GIT_SSH_ADD`).
+fn tool_override(name: &str) -> String {
+    let key = match name {
+        "ssh" => "EASY_GIT_SSH",
+        "ssh-keygen" => "EASY_GIT_SSH_KEYGEN",
+        "ssh-keyscan" => "EASY_GIT_SSH_KEYSCAN",
+        "ssh-add" => "EASY_GIT_SSH_ADD",
+        _ => return name.to_string(),
+    };
+    std::env::var(key)
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or_else(|| name.to_string())
+}
+
+/// Runs one ssh-family tool through a hidden console, bounded by `timeout`.
+/// `Ok(None)` means the tool is not installed (callers render installation
+/// guidance instead of an "internal error").
+fn run_tool(
+    name: &str,
+    args: &[&str],
+    timeout: Duration,
+) -> Result<Option<(String, String, bool)>, EgError> {
+    use std::process::Stdio;
+    let resolved = tool_override(name);
+    let mut command = if cfg!(windows) && (resolved.ends_with(".bat") || resolved.ends_with(".cmd"))
+    {
+        let mut command = crate::process::hidden_command("cmd");
+        command.arg("/C").arg(&resolved).args(args);
+        command
+    } else {
+        let mut command = crate::process::hidden_command(&resolved);
+        command.args(args);
+        command
+    };
+    let mut child = match command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .stdin(Stdio::null())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(EgError::Internal {
+                context: format!("{name} spawn failed: {error}"),
+            })
+        }
+    };
+
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    let stdout_handle = stdout.map(|stream| {
+        std::thread::spawn(move || {
+            let mut text = String::new();
+            for line in BufReader::new(stream).lines().map_while(Result::ok) {
+                text.push_str(&line);
+                text.push('\n');
+            }
+            text
+        })
+    });
+    let stderr_handle = stderr.map(|stream| {
+        std::thread::spawn(move || {
+            let mut text = String::new();
+            for line in BufReader::new(stream).lines().map_while(Result::ok) {
+                text.push_str(&line);
+                text.push('\n');
+            }
+            text
+        })
+    });
+
+    let started = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let stdout_text = stdout_handle
+                    .and_then(|handle| handle.join().ok())
+                    .unwrap_or_default();
+                let stderr_text = stderr_handle
+                    .and_then(|handle| handle.join().ok())
+                    .unwrap_or_default();
+                return Ok(Some((stdout_text, stderr_text, status.success())));
+            }
+            Ok(None) => {
+                if started.elapsed() >= timeout {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(EgError::Internal {
+                        context: format!("{name} timed out after {}s", timeout.as_secs()),
+                    });
+                }
+                std::thread::sleep(Duration::from_millis(30));
+            }
+            Err(error) => {
+                return Err(EgError::Internal {
+                    context: format!("{name} wait failed: {error}"),
+                })
+            }
+        }
+    }
+}
+
+fn tool_available(name: &str) -> bool {
+    matches!(run_tool(name, &["-V"], LOCAL_TOOL_TIMEOUT), Ok(Some(_)))
+}
+
+/// True when stderr describes an untrusted or changed SSH host key.
+pub fn is_host_key_failure(stderr: &str) -> bool {
+    let lower = stderr.to_lowercase();
+    lower.contains("host key verification failed")
+        || lower.contains("remote host identification has changed")
+        || lower.contains("no matching host key type found")
+        || lower.contains("host key for") && lower.contains("has changed")
+}
+
+/// True when the known key no longer matches (the MITM-looking direction).
+pub fn is_host_key_changed(stderr: &str) -> bool {
+    let lower = stderr.to_lowercase();
+    lower.contains("remote host identification has changed")
+        || lower.contains("host key for") && lower.contains("has changed")
+}
+
+/// True when the SSH child failed because it had no usable key/agent.
+pub fn is_ssh_auth_failure(stderr: &str) -> bool {
+    let lower = stderr.to_lowercase();
+    lower.contains("permission denied (publickey")
+        || lower.contains("no such identity")
+        || lower.contains("key_load_public")
+        || lower.contains("no identities")
+        || lower.contains("could not open a connection to your authentication agent")
+        || lower.contains("bad owner or permissions")
+}
+
+/// Extracts the SSH host/port from a remote URL, accepting `ssh://…` and
+/// scp-like `[user@]host:path` forms (the path may be relative here — a git
+/// remote always carries one). HTTPS and Windows drive paths return None.
+pub fn remote_ssh_target(url: &str) -> Option<(String, u16)> {
+    let text = url.trim();
+    if text.contains("://") {
+        let rest = text.strip_prefix("ssh://")?;
+        let authority = rest.split(['/', '?', '#']).next()?;
+        let host_port = authority
+            .rsplit_once('@')
+            .map_or(authority, |(_, host)| host);
+        if host_port.is_empty() {
+            return None;
+        }
+        if let Some(inner) = host_port.strip_prefix('[') {
+            let end = inner.find(']')?;
+            let host = &inner[..end];
+            let rest = &inner[end + 1..];
+            let port = rest
+                .strip_prefix(':')
+                .and_then(|value| value.parse::<u16>().ok())
+                .unwrap_or(DEFAULT_SSH_PORT);
+            return Some((host.to_string(), port));
+        }
+        if let Some((host, port)) = host_port.rsplit_once(':') {
+            if let Ok(port) = port.parse::<u16>() {
+                return Some((host.to_string(), port));
+            }
+        }
+        return Some((host_port.to_string(), DEFAULT_SSH_PORT));
+    }
+    if text.contains("://") {
+        return None;
+    }
+    let colon = text.find(':')?;
+    let host_part = &text[..colon];
+    if host_part.is_empty() || host_part.contains('/') || host_part.contains('\\') {
+        return None;
+    }
+    // Windows drive (`C:\…`) is a local path, not a remote.
+    let bytes = host_part.as_bytes();
+    if bytes.len() == 1 && bytes[0].is_ascii_alphabetic() {
+        return None;
+    }
+    let host = host_part
+        .rsplit_once('@')
+        .map_or(host_part, |(_, host)| host);
+    (!host.is_empty()).then(|| (host.to_string(), DEFAULT_SSH_PORT))
+}
+
+/// Effective key directory (`~/.ssh`), independent of whether it exists.
+fn key_dir() -> Option<PathBuf> {
+    user_home().map(|home| home.join(".ssh"))
+}
+
+/// Expands a leading `~/` in an ssh-config path.
+fn expand_tilde(path: &str) -> PathBuf {
+    if let Some(rest) = path.strip_prefix("~/") {
+        if let Some(home) = user_home() {
+            return home.join(rest);
+        }
+    }
+    PathBuf::from(path)
+}
+
+/// The known_hosts file ssh itself resolves for `host` (`ssh -G`), falling
+/// back to `~/.ssh/known_hosts`.
+pub fn known_hosts_path(host: &str) -> PathBuf {
+    if let Ok(Some((stdout, _, _))) = run_tool("ssh", &["-G", host], LOCAL_TOOL_TIMEOUT) {
+        for line in stdout.lines() {
+            if let Some(value) = line.strip_prefix("userknownhostsfile ") {
+                if let Some(first) = value.split_whitespace().next() {
+                    if !first.is_empty() && first != "none" {
+                        return expand_tilde(first);
+                    }
+                }
+            }
+        }
+    }
+    key_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("known_hosts")
+}
+
+fn known_hosts_spec(host: &str, port: u16) -> String {
+    if port == DEFAULT_SSH_PORT {
+        host.to_string()
+    } else if host.contains(':') {
+        format!("[{host}]:{port}")
+    } else {
+        format!("{host}:{port}")
+    }
+}
+
+/// Probes the server's offered host key by letting ssh connect once with a
+/// **temporary** known_hosts file (`UserKnownHostsFile`), then reading the
+/// line ssh pinned there. Using ssh itself (rather than ssh-keyscan) keeps the
+/// probe aligned with the exact client/config that will later connect — the
+/// Windows OpenSSH 9.5 `ssh-keyscan` fails against GitHub's KEX list even
+/// though `ssh` connects fine (真机 2026-10-26). The real known_hosts is never
+/// touched here; only an explicit trust copies the line over.
+fn scan_host_key_lines(host: &str, port: u16) -> Result<Vec<String>, EgError> {
+    let dir = std::env::temp_dir().join(format!(
+        "easy-git-hostkey-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0)
+    ));
+    std::fs::create_dir_all(&dir).map_err(|error| EgError::Internal {
+        context: format!("创建主机指纹临时目录失败：{error}"),
+    })?;
+    let known_hosts = dir.join("known_hosts");
+    let known_hosts_arg = format!("UserKnownHostsFile={}", known_hosts.display());
+    let port_text = port.to_string();
+    let timeout_text = (PROBE_TIMEOUT.as_secs() + 3).to_string();
+    let output = run_tool(
+        "ssh",
+        &[
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "StrictHostKeyChecking=accept-new",
+            "-o",
+            &known_hosts_arg,
+            "-o",
+            "GlobalKnownHostsFile=none",
+            "-o",
+            "HashKnownHosts=no",
+            "-o",
+            &format!("ConnectTimeout={timeout_text}"),
+            "-p",
+            &port_text,
+            host,
+            "true",
+        ],
+        PROBE_TIMEOUT + Duration::from_secs(5),
+    )?;
+    let Some((_stdout, stderr, _ok)) = output else {
+        let _ = std::fs::remove_dir_all(&dir);
+        return Err(EgError::Internal {
+            context: "未安装 ssh 客户端（需要 OpenSSH）".into(),
+        });
+    };
+    let pinned = std::fs::read_to_string(&known_hosts).unwrap_or_default();
+    let _ = std::fs::remove_dir_all(&dir);
+    let lines: Vec<String> = pinned
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .filter_map(|line| {
+            let mut parts = line.split_whitespace();
+            let _host = parts.next()?;
+            let key_type = parts.next()?;
+            let key = parts.next()?;
+            Some(format!("{key_type} {key}"))
+        })
+        .collect();
+    if lines.is_empty() {
+        return Err(EgError::Internal {
+            context: format!(
+                "无法从 {host}:{port} 获取主机密钥：{}",
+                stderr.lines().last().unwrap_or_default().trim()
+            ),
+        });
+    }
+    Ok(lines)
+}
+
+/// The key ssh would most likely negotiate: ed25519 > ecdsa > rsa.
+fn preferred_line(lines: &[String]) -> Option<&String> {
+    for prefix in ["ssh-ed25519 ", "ecdsa-", "ssh-rsa ", "rsa-sha2-"] {
+        if let Some(line) = lines.iter().find(|line| line.starts_with(prefix)) {
+            return Some(line);
+        }
+    }
+    lines.first()
+}
+
+/// `(fingerprint, key type)` for one `keytype base64` line.
+fn fingerprint_of_line(line: &str) -> Result<Option<(String, String)>, EgError> {
+    let dir = std::env::temp_dir().join(format!(
+        "easy-git-sshfp-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0)
+    ));
+    std::fs::create_dir_all(&dir).map_err(|error| EgError::Internal {
+        context: format!("创建临时目录失败：{error}"),
+    })?;
+    let file = dir.join("hostkey.pub");
+    let written = std::fs::write(&file, format!("{line}\n"));
+    let result = match written {
+        Ok(()) => run_tool(
+            "ssh-keygen",
+            &["-lf", &file.to_string_lossy()],
+            LOCAL_TOOL_TIMEOUT,
+        )
+        .map(|output| output.and_then(|(stdout, _, ok)| if ok { Some(stdout) } else { None })),
+        Err(error) => Err(EgError::Internal {
+            context: format!("写入临时公钥失败：{error}"),
+        }),
+    };
+    let _ = std::fs::remove_file(&file);
+    let _ = std::fs::remove_dir(&dir);
+    match result? {
+        Some(stdout) => {
+            let info = parse_ssh_keygen_line(&stdout);
+            Ok(info.map(|info| (info.fingerprint, info.key_type)))
+        }
+        None => Ok(None),
+    }
+}
+
+/// Probes the host key the server offers, in ssh's own preference order.
+pub fn probe_host_key(host: &str, port: u16) -> Result<SshHostKeyInfo, EgError> {
+    let lines = scan_host_key_lines(host, port)?;
+    let line = preferred_line(&lines).ok_or_else(|| EgError::Internal {
+        context: format!("{host}:{port} 没有可用的主机密钥"),
+    })?;
+    let (fingerprint, key_type) = fingerprint_of_line(line)?.ok_or_else(|| EgError::Internal {
+        context: format!("无法计算 {host}:{port} 的主机指纹（ssh-keygen 不可用）"),
+    })?;
+    Ok(SshHostKeyInfo {
+        host: host.to_string(),
+        port,
+        key_type,
+        fingerprint,
+    })
+}
+
+/// Writes the probed host key into known_hosts after an explicit user
+/// confirmation. Refuses when the probe no longer matches `expected`.
+pub fn trust_host_key(host: &str, port: u16, expected: &str) -> Result<SshHostKeyInfo, EgError> {
+    let probed = probe_host_key(host, port)?;
+    if probed.fingerprint != expected {
+        return Err(EgError::SshHostKey {
+            host: host.to_string(),
+            port,
+            changed: true,
+            fingerprint: Some(probed.fingerprint.clone()),
+            key_type: Some(probed.key_type.clone()),
+            detail: Some("确认的主机指纹与当前探测结果不一致，已拒绝写入 known_hosts".into()),
+        });
+    }
+    let lines = scan_host_key_lines(host, port)?;
+    let spec = known_hosts_spec(host, port);
+    let path = known_hosts_path(host);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| EgError::Internal {
+            context: format!("创建 known_hosts 目录失败：{error}"),
+        })?;
+        restrict_key_permissions(parent);
+    }
+    // Remove the previous entry first (handles plain and hashed forms).
+    let _ = run_tool(
+        "ssh-keygen",
+        &["-R", &spec, "-f", &path.to_string_lossy()],
+        LOCAL_TOOL_TIMEOUT,
+    );
+    let mut body = std::fs::read_to_string(&path).unwrap_or_default();
+    if !body.is_empty() && !body.ends_with('\n') {
+        body.push('\n');
+    }
+    for line in &lines {
+        body.push_str(&format!("{spec} {line}\n"));
+    }
+    let temp = path.with_extension("easygit-tmp");
+    std::fs::write(&temp, body).map_err(|error| EgError::Internal {
+        context: format!("写入 known_hosts 失败：{error}"),
+    })?;
+    restrict_key_permissions(&temp);
+    #[cfg(windows)]
+    {
+        // Windows rename refuses an existing destination.
+        let _ = std::fs::remove_file(&path);
+    }
+    std::fs::rename(&temp, &path).map_err(|error| EgError::Internal {
+        context: format!("替换 known_hosts 失败：{error}"),
+    })?;
+    tracing::info!(host, port, path = %path.display(), "ssh host key trusted");
+    Ok(probed)
+}
+
+#[cfg(unix)]
+fn restrict_key_permissions(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let mode = if path.is_dir() { 0o700 } else { 0o600 };
+    let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode));
+}
+
+#[cfg(not(unix))]
+fn restrict_key_permissions(_path: &Path) {}
+
+/// Resolves the public-key fingerprint/comment for a `.pub` file.
+fn describe_public_key(path: &Path) -> Option<SshPublicKey> {
+    let path_text = path.to_string_lossy();
+    let (stdout, _, ok) = run_tool("ssh-keygen", &["-lf", &path_text], LOCAL_TOOL_TIMEOUT)
+        .ok()
+        .flatten()?;
+    if !ok {
+        return None;
+    }
+    let info = parse_ssh_keygen_line(&stdout)?;
+    Some(SshPublicKey {
+        path: path_text.into_owned(),
+        fingerprint: info.fingerprint,
+        comment: info.comment,
+        key_type: info.key_type,
+    })
+}
+
+/// Validates a key name so it cannot escape `~/.ssh`.
+fn validate_key_name(name: &str) -> Result<String, EgError> {
+    let trimmed = name.trim();
+    if trimmed.is_empty()
+        || trimmed.contains(['/', '\\'])
+        || trimmed.contains("..")
+        || trimmed == "."
+    {
+        return Err(EgError::Internal {
+            context: "密钥文件名不能包含路径分隔符".into(),
+        });
+    }
+    Ok(trimmed.to_string())
+}
+
+/// Generates the default ed25519 key (no passphrase, so SSH can use it
+/// without an agent). Existing files are never overwritten.
+pub fn generate_key(request: &SshGenerateKeyRequest) -> Result<SshPublicKey, EgError> {
+    let dir = key_dir().ok_or_else(|| EgError::Internal {
+        context: "无法确定用户主目录（~）".into(),
+    })?;
+    std::fs::create_dir_all(&dir).map_err(|error| EgError::Internal {
+        context: format!("创建 ~/.ssh 失败：{error}"),
+    })?;
+    restrict_key_permissions(&dir);
+    let name = validate_key_name(request.name.as_deref().unwrap_or("id_ed25519"))?;
+    let path = dir.join(&name);
+    if path.exists() {
+        return Err(EgError::Internal {
+            context: format!("{} 已存在，不会覆盖", path.display()),
+        });
+    }
+    let comment = request
+        .comment
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or("EasyGit");
+    let output = run_tool(
+        "ssh-keygen",
+        &[
+            "-q",
+            "-t",
+            "ed25519",
+            "-N",
+            "",
+            "-C",
+            comment,
+            "-f",
+            &path.to_string_lossy(),
+        ],
+        KEYGEN_TIMEOUT,
+    )?;
+    let Some((_, stderr, ok)) = output else {
+        return Err(EgError::Internal {
+            context: "未安装 ssh-keygen（需要 OpenSSH 客户端）".into(),
+        });
+    };
+    if !ok {
+        let _ = std::fs::remove_file(&path);
+        return Err(EgError::Internal {
+            context: format!("生成 SSH 密钥失败：{}", stderr.trim()),
+        });
+    }
+    restrict_key_permissions(&path);
+    let public_path = PathBuf::from(format!("{}.pub", path.to_string_lossy()));
+    describe_public_key(&public_path).ok_or_else(|| EgError::Internal {
+        context: "密钥已生成，但无法读取公钥指纹".into(),
+    })
+}
+
+/// Returns the contents of a public key file under `~/.ssh` (only `.pub`).
+pub fn public_key(path: &str) -> Result<String, EgError> {
+    let candidate = PathBuf::from(path);
+    let key_dir = key_dir().ok_or_else(|| EgError::Internal {
+        context: "无法确定用户主目录（~）".into(),
+    })?;
+    let canonical = candidate
+        .canonicalize()
+        .map_err(|error| EgError::Internal {
+            context: format!("公钥文件不可读：{error}"),
+        })?;
+    let allowed = key_dir.canonicalize().unwrap_or_else(|_| key_dir.clone());
+    if !canonical.starts_with(&allowed)
+        || canonical.extension().and_then(|ext| ext.to_str()) != Some("pub")
+    {
+        return Err(EgError::Internal {
+            context: "只允许读取 ~/.ssh 下的 .pub 公钥文件".into(),
+        });
+    }
+    std::fs::read_to_string(&canonical).map_err(|error| EgError::Internal {
+        context: format!("读取公钥失败：{error}"),
+    })
+}
+
+/// Runs `ssh -T git@github.com` and returns the authenticated username.
+/// GitHub exits 1 even on success, so the text is the signal.
+pub fn test_github_login() -> Result<String, EgError> {
+    let output = run_tool(
+        "ssh",
+        &[
+            "-T",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "StrictHostKeyChecking=yes",
+            "-o",
+            &format!("ConnectTimeout={CONNECT_TIMEOUT_SECS}"),
+            "git@github.com",
+        ],
+        CLI_TIMEOUT_QUICK,
+    )?;
+    let Some((stdout, stderr, _ok)) = output else {
+        return Err(EgError::Internal {
+            context: "未安装 ssh 客户端（需要 OpenSSH）".into(),
+        });
+    };
+    let text = format!("{stdout}{stderr}");
+    if let Some(line) = text
+        .lines()
+        .find(|line| line.contains("successfully authenticated"))
+    {
+        let username = line
+            .split("Hi ")
+            .nth(1)
+            .and_then(|rest| rest.split('!').next())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("GitHub 用户")
+            .to_string();
+        return Ok(username);
+    }
+    let target = SshTarget {
+        host: "github.com".into(),
+        port: DEFAULT_SSH_PORT,
+        user: Some("git".into()),
+        path: "/".into(),
+    };
+    Err(humanize_ssh(&text, "ssh://git@github.com/", &target))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn remote_ssh_target_parses_remote_urls() {
+        assert_eq!(
+            remote_ssh_target("git@github.com:user/repo.git"),
+            Some(("github.com".into(), 22))
+        );
+        assert_eq!(
+            remote_ssh_target("ssh://git@example.com:2222/repo.git"),
+            Some(("example.com".into(), 2222))
+        );
+        assert_eq!(remote_ssh_target("https://github.com/u/r.git"), None);
+        assert_eq!(remote_ssh_target(r"C:\repos\demo"), None);
+        assert_eq!(remote_ssh_target("/srv/repo"), None);
+    }
+
+    #[test]
+    fn host_key_errors_are_classified() {
+        assert!(is_host_key_failure("Host key verification failed."));
+        assert!(is_host_key_failure(
+            "@@@ WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED! @@@"
+        ));
+        assert!(is_host_key_changed(
+            "@@@ WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED! @@@"
+        ));
+        assert!(!is_host_key_changed("Host key verification failed."));
+        assert!(is_ssh_auth_failure(
+            "git@github.com: Permission denied (publickey)."
+        ));
+        assert!(is_ssh_auth_failure(
+            "Could not open a connection to your authentication agent."
+        ));
+        assert!(!is_ssh_auth_failure("fatal: not a git repository"));
+    }
+
+    /// Manual network test: probes GitHub and writes the confirmed key into
+    /// the real known_hosts (restore/remove it afterwards). Run with
+    /// `cargo test -p eg-git-core --lib live_probe -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "manual network test; writes the user's known_hosts"]
+    fn live_probe_and_trust_github() {
+        let info = probe_host_key("github.com", 22).expect("probe github");
+        println!(
+            "probed {} {} {}",
+            info.host, info.key_type, info.fingerprint
+        );
+        let trusted = trust_host_key("github.com", 22, &info.fingerprint).expect("trust github");
+        assert_eq!(trusted.fingerprint, info.fingerprint);
+        assert!(!info.key_type.is_empty());
+        assert!(
+            !info.key_type.contains('('),
+            "key type must be bare: {}",
+            info.key_type
+        );
+    }
+
+    #[test]
+    fn known_hosts_spec_matches_openssh_convention() {
+        assert_eq!(known_hosts_spec("github.com", 22), "github.com");
+        assert_eq!(known_hosts_spec("example.com", 2222), "example.com:2222");
+        assert_eq!(known_hosts_spec("::1", 2222), "[::1]:2222");
+    }
+
+    #[test]
+    fn validate_key_name_rejects_path_escape() {
+        assert_eq!(validate_key_name("id_ed25519").unwrap(), "id_ed25519");
+        for bad in ["", "../key", "a/b", r"a\b", ".", ".."] {
+            assert!(validate_key_name(bad).is_err(), "{bad} must be rejected");
+        }
+    }
 
     #[test]
     fn allowlist_accepts_read_and_safe_write() {
@@ -701,7 +1383,14 @@ mod tests {
         let err = humanize_ssh("root@host: Permission denied (publickey).", uri, &target);
         assert_eq!(err.code(), "auth");
         let err = humanize_ssh("Host key verification failed.", uri, &target);
-        assert!(matches!(err, EgError::Auth { provider, .. } if provider == "ssh-host-key"));
+        assert!(matches!(
+            err,
+            EgError::SshHostKey {
+                host,
+                changed: false,
+                ..
+            } if host == "host"
+        ));
         // Old behavior moved: a "not a git repository" stderr now classifies
         // as ssh_not_a_repo (frontend decides whether to offer init based on
         // the existence probe below).
@@ -810,12 +1499,34 @@ pub fn ssh_credentials_overview() -> Result<SshCredentialsOverview, EgError> {
     } else {
         Vec::new()
     };
+    let ssh_version = run_tool("ssh", &["-V"], OVERVIEW_TIMEOUT)
+        .ok()
+        .flatten()
+        .map(|(stdout, stderr, _)| {
+            let text = if stderr.trim().is_empty() {
+                stdout
+            } else {
+                stderr
+            };
+            text.lines().next().unwrap_or_default().trim().to_string()
+        })
+        .filter(|value| !value.is_empty());
+    let tools_available = tool_available("ssh") && tool_available("ssh-keygen");
+    let known_hosts_path = Some(
+        known_hosts_path("github.com")
+            .to_string_lossy()
+            .into_owned(),
+    );
 
     Ok(SshCredentialsOverview {
         agent,
         public_keys,
         home_dir: home.map(|p| p.to_string_lossy().into_owned()),
         ssh_dir_present,
+        ssh_version,
+        key_dir: ssh_dir.map(|p| p.to_string_lossy().into_owned()),
+        known_hosts_path,
+        tools_available,
     })
 }
 
@@ -884,21 +1595,26 @@ fn list_public_keys(ssh_dir: &std::path::Path) -> Vec<SshPublicKey> {
 /// Bits before the fingerprint and the `(TYPE)` tail are kept verbatim in
 /// `key_type` so the UI can show e.g. `RSA 4096` without re-deriving it.
 fn parse_ssh_keygen_line(stdout: &str) -> Option<SshKeyInfo> {
-    // Trim the trailing newline; fields are whitespace-separated.
+    // Trim the trailing newline; format is `bits fingerprint [comment] (TYPE)`.
     let line = stdout.trim();
-    let mut parts = line.splitn(4, char::is_whitespace);
-    let _bits = parts.next()?;
-    let fingerprint = parts.next()?.to_string();
-    let comment = parts.next().unwrap_or_default().to_string();
-    let key_type = if let Some(rest) = parts.next() {
-        // Strip the trailing "(ED25519)" or "(RSA)" parens if present —
-        // older ssh-keygen sometimes omits them.
-        rest.trim()
-            .trim_matches(|c| c == '(' || c == ')')
-            .to_string()
-    } else {
-        String::new()
+    let (body, key_type) = match (line.rfind('('), line.rfind(')')) {
+        (Some(open), Some(close)) if close > open => (
+            line[..open].trim_end(),
+            line[open + 1..close].trim().to_string(),
+        ),
+        // Older ssh-keygen sometimes omits the (TYPE) tail.
+        _ => (line, String::new()),
     };
+    let mut words = body.split_whitespace();
+    let _bits = words.next()?;
+    let fingerprint = words.next()?.to_string();
+    // Everything between the fingerprint and the type is the comment; it may
+    // contain spaces (`no comment` is what ssh-keygen prints for a key
+    // without one), so slicing is safer than a fourth whitespace token.
+    let comment = body
+        .find(&fingerprint)
+        .map(|index| body[index + fingerprint.len()..].trim().to_string())
+        .unwrap_or_default();
     if fingerprint.is_empty() {
         return None;
     }
@@ -1006,6 +1722,15 @@ mod credentials_overview_tests {
         let line = "4096 SHA256:tI0bRq8Wi4k06dQ7iY0WnP9gPjF1N3K2aBcDeFgHiJk user@host (RSA)\n";
         let info = parse_ssh_keygen_line(line).expect("must parse");
         assert_eq!(info.key_type, "RSA");
+    }
+
+    #[test]
+    fn parses_the_placeholder_comment_from_a_key_without_comment() {
+        // ssh-keygen -lf on a bare `keytype base64` line prints "no comment".
+        let line = "256 SHA256:abc no comment (ED25519)\n";
+        let info = parse_ssh_keygen_line(line).expect("must parse");
+        assert_eq!(info.comment, "no comment");
+        assert_eq!(info.key_type, "ED25519");
     }
 
     #[test]

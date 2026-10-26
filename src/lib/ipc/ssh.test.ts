@@ -29,19 +29,24 @@ describe('isSshRepoPath', () => {
 });
 
 describe('humanizeEgError SSH providers', () => {
-  it('explains ssh-host-key failures with fingerprint guidance', () => {
+  it('explains ssh_host_key failures with fingerprint guidance', () => {
     const result = humanizeEgError({
-      code: 'auth',
-      provider: 'ssh-host-key',
+      code: 'ssh_host_key',
+      host: 'github.com',
+      port: 22,
+      changed: false,
       detail: 'Host key verification failed.',
     });
-    expect(result.detail).toContain('主机密钥');
+    expect(result.title).toBe('需要确认服务器身份');
+    expect(result.detail).toContain('首次连接');
+    expect(result.detail).toContain('github.com');
     expect(result.reason).toContain('Host key verification failed.');
   });
 
-  it('explains ssh-key failures with agent guidance', () => {
+  it('explains ssh-key failures with the setup action', () => {
     const result = humanizeEgError({ code: 'auth', provider: 'ssh-key' });
-    expect(result.detail).toContain('ssh-agent');
+    expect(result.detail).toContain('SSH 密钥');
+    expect(result.hint?.action).toBe('open-ssh-setup');
   });
 
   it('explains ssh-passphrase failures with unlock guidance', () => {

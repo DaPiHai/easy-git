@@ -79,6 +79,39 @@ pub struct SshCredentialsOverview {
     pub home_dir: Option<String>,
     /// True when `~/.ssh` exists. Drives the UI's empty-state message.
     pub ssh_dir_present: bool,
+    /// `ssh -V` first line, when the OpenSSH client answers.
+    pub ssh_version: Option<String>,
+    /// Effective key directory (`~/.ssh`).
+    pub key_dir: Option<String>,
+    /// The known_hosts file ssh itself resolves for a host.
+    pub known_hosts_path: Option<String>,
+    /// True when the ssh-family tools needed by the setup wizard are present.
+    pub tools_available: bool,
+}
+
+/// One server host key offered by `ssh-keyscan`, already fingerprinted. The
+/// UI shows this before writing anything to known_hosts.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SshHostKeyInfo {
+    pub host: String,
+    pub port: u16,
+    /// Algorithm as reported by ssh-keygen, e.g. `ED25519`, `RSA`.
+    pub key_type: String,
+    /// SHA256 fingerprint (modern OpenSSH) as printed by `ssh-keygen -lf`.
+    pub fingerprint: String,
+}
+
+/// Request for `ssh_key_generate`. The wizard only generates the default
+/// `id_ed25519` key (no passphrase, so SSH can use it without an agent);
+/// existing keys are never overwritten.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct SshGenerateKeyRequest {
+    /// File name under `~/.ssh`; defaults to `id_ed25519`.
+    pub name: Option<String>,
+    /// Public-key comment; defaults to `EasyGit`.
+    pub comment: Option<String>,
 }
 
 /// A repository living on a remote host, addressed over SSH.
