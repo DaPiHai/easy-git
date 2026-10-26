@@ -28,7 +28,9 @@ pub struct CliAuth {
 
 /// Writes an ephemeral askpass helper answering from `creds` and returns its
 /// path. The caller must delete the file after the child exits; its lifetime
-/// is one `git push` at most. Permissions are owner-only (0600 on Unix).
+/// is one `git push` at most. Permissions are owner-only (0700 on Unix: git
+/// execs the file directly, so it needs the owner execute bit, while group and
+/// other must stay out — see the tests below).
 /// Each call gets a unique directory so concurrent pushes (and parallel
 /// tests) in one process never share a script path.
 fn write_askpass_script(creds: &PushCredentials) -> Result<PathBuf, EgError> {
@@ -76,7 +78,12 @@ fn write_askpass_script(creds: &PushCredentials) -> Result<PathBuf, EgError> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).map_err(|e| {
+        // 0700, not 0600: `GIT_ASKPASS` is executed as a program, so the owner
+        // execute bit is mandatory. Dropping it made every credentialed push
+        // on Unix die with `cannot exec '…/askpass.sh': 权限不够` before git
+        // ever saw a credential (real machine, 2026-10-16). Group/other stay
+        // locked out, which is what keeps the secret in the file private.
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).map_err(|e| {
             EgError::Internal {
                 context: format!("askpass script chmod failed: {e}"),
             }
@@ -874,18 +881,58 @@ mod tests {
         );
     }
 
+    /// The helper exists to be *executed* by git (`GIT_ASKPASS` names a
+    /// program, not an interpreter argument), so the owner needs both ends:
+    /// the file must stay private to the owner and be executable by it.
+    /// Shipping it as 0600 satisfied only the privacy half and made every
+    /// credentialed push fail on Unix with
+    /// `fatal: cannot exec '…/askpass.sh': 权限不够` — private and unusable at
+    /// once (真机 2026-10-16, 自建 GitLab over HTTP). Windows needs no execute
+    /// bit for its `.bat`, which is why only Unix broke.
     #[test]
-    fn askpass_script_is_owner_only_on_unix() {
+    fn askpass_script_is_owner_only_and_executable_on_unix() {
         let path = write_askpass_script(&test_creds()).expect("write script");
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
             assert_eq!(
-                mode, 0o600,
-                "the secret file must not be group/world readable"
+                mode & 0o077,
+                0,
+                "the secret file must not be group/world accessible (got {mode:o})"
+            );
+            assert_ne!(
+                mode & 0o100,
+                0,
+                "git execs the helper directly, so the owner execute bit is \
+                 required (got {mode:o})"
             );
         }
+        remove_askpass_script(&path);
+    }
+
+    /// Reproduces git's own invocation — execute the helper path, read stdout.
+    /// This is the assertion that actually catches a missing execute bit; the
+    /// mode check above only describes it.
+    #[cfg(unix)]
+    #[test]
+    fn askpass_script_executes_when_git_invokes_it() {
+        let path = write_askpass_script(&test_creds()).expect("write script");
+        let answer = |prompt: &str| {
+            let out = std::process::Command::new(&path)
+                .arg(prompt)
+                .output()
+                .unwrap_or_else(|e| panic!("helper must be executable for {prompt}: {e}"));
+            assert!(out.status.success(), "helper exited nonzero for {prompt}");
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        assert_eq!(answer("Username for 'http://47.108.131.92': "), "老用户");
+        assert_eq!(
+            answer("Password for 'http://老用户@47.108.131.92': "),
+            "s3cret!",
+            "the password prompt embeds the username in the URL, so it must not \
+             be answered with the username"
+        );
         remove_askpass_script(&path);
     }
 }
