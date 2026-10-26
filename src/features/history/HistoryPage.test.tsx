@@ -155,7 +155,8 @@ describe('HistoryPage (F-15/F-16/F-17)', () => {
     render(<HistoryPage />);
     await vi.waitFor(() => expect(logPageMock).toHaveBeenCalledTimes(1));
 
-    await userEvent.selectOptions(screen.getByTestId('history-filter-branch'), 'feature');
+    fireEvent.click(screen.getByTestId('history-filter-branch'));
+    fireEvent.click(screen.getByTestId('history-filter-branch-option-feature'));
     await vi.waitFor(() => {
       const last = logPageMock.mock.calls.at(-1);
       expect((last?.[3] as { branch?: string }).branch).toBe('feature');

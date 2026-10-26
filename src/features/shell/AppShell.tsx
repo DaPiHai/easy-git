@@ -31,7 +31,8 @@ import { SettingsPage } from '../settings/SettingsPage';
 /** PRD §6.1 frame: top bar / repo sidebar / main view / detail panel / bottom bar. */
 export function AppShell() {
   const view = useUiStore((s) => s.view);
-  const hasActiveRepo = useRepoStore((s) => s.activeId !== null);
+  const activeId = useRepoStore((s) => s.activeId);
+  const hasActiveRepo = activeId !== null;
   // F-24: a parked merge takes over the main view until resolved/aborted.
   const midMerge = useMergeStore((s) => s.mergeState !== null);
   const status = useRepoStore((s) => s.status);
@@ -97,7 +98,7 @@ export function AppShell() {
               {view === 'branches' && <BranchesPage />}
               {view === 'storage' && <StoragePage />}
               {view === 'timeline' && <TimelinePage />}
-              {view === 'remotes' && <RemotesPage />}
+              {view === 'remotes' && <RemotesPage key={activeId ?? 'none'} />}
             </>
           )}
         </main>

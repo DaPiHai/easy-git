@@ -78,7 +78,8 @@ cargo run --features gen-bindings --bin generate-bindings  # 生成绑定；跑�
 - 改绑定/命令后必跑绑定漂移检查；`src/lib/ipc/bindings.ts` 漂移是 CI lint 直接失败项。
 - 外部命令（`git`）必须经 `eg_git_core::process::hidden_command` 创建：release 是 GUI 子系统无控制台，裸 `Command::new` 会让 Windows 每次给子进程弹一个空白 cmd 窗口；该问题只在 release 包复现，`tauri dev` 看不到。
 - SSH 失败必须分类，不能落到 `internal`：本地仓库 git CLI 的 `Host key verification failed` / `Permission denied (publickey)` 要分别映射为 `ssh_host_key` / `Auth{provider:"ssh-*",host}`，走主机指纹弹窗或 SSH 向导；`humanize_network` 与 `humanize_ssh` 两条路径都要覆盖。known_hosts 只在用户确认后写入，私钥永不读入前端。
-- 多远端同步以 `syncStore.selectedRemote` 为准（不是 `remotes[0]`）；「推送到全部远端」非强推、逐远端汇总；单次 push 仅在分支无上游时设置上游，全部推送不改上游。
+- 多远端同步以 `syncStore.selectedRemote` 为准（不是 `remotes[0]`）；「推送到全部远端」非强推、逐远端汇总；单次 push 仅在分支无上游时设置上游，全部推送不改上游。远程页批量操作只作用于勾选远端，批量推送非强推；**拉取一次只能选一个远端**，多选时按钮必须禁用。
+- 下拉一律用 `src/components/Select.tsx`，不要再用原生 `<select>`（系统弹层不受主题控制，亮色下会变深色菜单；原生 select 测试也容易误读 textContent）。Select 是自绘 popover，不依赖 Radix，jsdom 下可同步查询选项。
 - M1 范围红线（不可裁剪）：三区暂存、提交、DAG 历史、分支、merge/冲突向导、fetch/push、撤销/回收站（m1-plan §4）。
 - 非目标（PRD §1.5）：不做内置终端、不做代码编辑器、不做 SVN/P4 互操作、不暴露 plumbing 命令界面。
 - `docs/design/LICENSE.awesome-design-md` 是上游规范许可文件，保留勿删。

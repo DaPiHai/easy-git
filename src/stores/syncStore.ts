@@ -45,6 +45,12 @@ export interface SyncProgressState {
   percent: number | null;
 }
 
+/** One remote's outcome in a sequential batch (remotes page). */
+export interface RemoteActionResult {
+  remote: string;
+  status: 'ok' | 'error' | 'rejected' | 'auth' | 'cancelled';
+}
+
 /**
  * One-shot HTTPS credentials for pushing to legacy servers. Session memory
  * only: kept in a module-level Map (never in zustand state, never
@@ -99,7 +105,7 @@ interface SyncStoreState {
   refreshTimeline: () => Promise<void>;
   /** Subscribes to sync://progress (call once at shell mount). */
   init: () => void;
-  fetch: (remote: string) => Promise<boolean>;
+  fetch: (remote: string, silent?: boolean) => Promise<boolean>;
   /** Returns 'ok' | 'diverged' | 'error'; diverged opens the 分叉 dialog. */
   pull: (
     remote: string,
@@ -116,8 +122,14 @@ interface SyncStoreState {
     silent?: boolean,
   ) => Promise<'ok' | 'rejected' | 'auth' | 'cancelled' | 'error'>;
   /** Pushes the current branch to every remote (non-force, sequential). */
-  pushAll: (branch: string) => Promise<Array<{ remote: string; status: string }>>;
-  testRemote: (name: string) => Promise<number | null>;
+  pushAll: (branch: string) => Promise<RemoteActionResult[]>;
+  /** Fetches the given remotes sequentially, suppressing per-remote toasts. */
+  fetchMany: (names: string[]) => Promise<RemoteActionResult[]>;
+  /** Tests the given remotes sequentially, suppressing per-remote toasts. */
+  testMany: (names: string[]) => Promise<RemoteActionResult[]>;
+  /** Pushes the current branch to the given remotes (non-force, sequential). */
+  pushMany: (branch: string, names: string[]) => Promise<RemoteActionResult[]>;
+  testRemote: (name: string, silent?: boolean) => Promise<number | null>;
   addRemote: (name: string, url: string) => Promise<boolean>;
   renameRemote: (oldName: string, newName: string) => Promise<boolean>;
   removeRemote: (name: string) => Promise<boolean>;
@@ -246,7 +258,7 @@ export const useSyncStore = create<SyncStoreState>()((set, get) => ({
     return () => unlisten?.();
   },
 
-  fetch: async (remote) => {
+  fetch: async (remote, silent = false) => {
     const { activeId } = useRepoStore.getState();
     if (!activeId || get().busy) return false;
     set({ busy: 'fetch' });
@@ -254,11 +266,11 @@ export const useSyncStore = create<SyncStoreState>()((set, get) => ({
       record(`git fetch ${q(remote)}`);
       const status = await withHostKeyTrust(() => fetchRemoteIpc(activeId, remote, true));
       await useRepoStore.getState().seed({ status });
-      toast.success(t('sync.fetched', { remote }));
+      if (!silent) toast.success(t('sync.fetched', { remote }));
       await get().refresh();
       return true;
     } catch (error) {
-      reportError(error, 'sync');
+      if (!silent) reportError(error, 'sync');
       return false;
     } finally {
       set({ busy: null, progress: null });
@@ -349,7 +361,9 @@ export const useSyncStore = create<SyncStoreState>()((set, get) => ({
           await attempt(creds);
         } catch (retryError) {
           if ((retryError as EgErrorLike).code === 'auth') {
-            toast.error(t('sync.authFailed'), formatIpcError(retryError as EgErrorLike).reason);
+            if (!silent) {
+              toast.error(t('sync.authFailed'), formatIpcError(retryError as EgErrorLike).reason);
+            }
             return 'auth';
           }
           throw retryError;
@@ -358,25 +372,21 @@ export const useSyncStore = create<SyncStoreState>()((set, get) => ({
         return 'ok';
       }
     } catch (error) {
-      reportError(error, 'sync');
+      if (!silent) reportError(error, 'sync');
       return 'error';
     } finally {
       set({ busy: null, progress: null });
     }
   },
 
-  pushAll: async (branch) => {
+  pushMany: async (branch, names) => {
     const { activeId } = useRepoStore.getState();
-    const { remotes, selectedRemote } = get();
-    if (!activeId || get().busy || remotes.length === 0) return [];
-    const ordered = [
-      ...remotes.filter((remote) => remote.name === selectedRemote),
-      ...remotes.filter((remote) => remote.name !== selectedRemote),
-    ];
-    const results: Array<{ remote: string; status: string }> = [];
-    for (const remote of ordered) {
-      const status = await get().push(remote.name, branch, false, true);
-      results.push({ remote: remote.name, status });
+    const unique = [...new Set(names)];
+    if (!activeId || get().busy || unique.length === 0) return [];
+    const results: RemoteActionResult[] = [];
+    for (const remote of unique) {
+      const status = await get().push(remote, branch, false, true);
+      results.push({ remote, status });
       if (status === 'cancelled') break;
     }
     const ok = results.filter((result) => result.status === 'ok').length;
@@ -396,15 +406,73 @@ export const useSyncStore = create<SyncStoreState>()((set, get) => ({
     return results;
   },
 
-  testRemote: async (name) => {
+  pushAll: async (branch) => {
+    const { activeId } = useRepoStore.getState();
+    const { remotes, selectedRemote } = get();
+    if (!activeId || get().busy || remotes.length === 0) return [];
+    const ordered = [
+      ...remotes.filter((remote) => remote.name === selectedRemote),
+      ...remotes.filter((remote) => remote.name !== selectedRemote),
+    ];
+    return get().pushMany(
+      branch,
+      ordered.map((remote) => remote.name),
+    );
+  },
+
+  fetchMany: async (names) => {
+    const { activeId } = useRepoStore.getState();
+    const unique = [...new Set(names)];
+    if (!activeId || get().busy || unique.length === 0) return [];
+    const results: RemoteActionResult[] = [];
+    for (const remote of unique) {
+      const ok = await get().fetch(remote, true);
+      results.push({ remote, status: ok ? 'ok' : 'error' });
+    }
+    const ok = results.filter((result) => result.status === 'ok').length;
+    const failed = results.filter((result) => result.status !== 'ok');
+    if (failed.length > 0) {
+      toast.error(
+        t('remotes.bulkFetchPartial', { ok, failed: failed.length }),
+        failed.map((result) => result.remote).join('、'),
+      );
+    } else {
+      toast.success(t('remotes.bulkFetchDone', { count: ok }));
+    }
+    return results;
+  },
+
+  testMany: async (names) => {
+    const { activeId } = useRepoStore.getState();
+    const unique = [...new Set(names)];
+    if (!activeId || get().busy || unique.length === 0) return [];
+    const results: RemoteActionResult[] = [];
+    for (const remote of unique) {
+      const count = await get().testRemote(remote, true);
+      results.push({ remote, status: count === null ? 'error' : 'ok' });
+    }
+    const ok = results.filter((result) => result.status === 'ok').length;
+    const failed = results.filter((result) => result.status !== 'ok');
+    if (failed.length > 0) {
+      toast.error(
+        t('remotes.bulkTestPartial', { ok, failed: failed.length }),
+        failed.map((result) => result.remote).join('、'),
+      );
+    } else {
+      toast.success(t('remotes.bulkTestDone', { count: ok }));
+    }
+    return results;
+  },
+
+  testRemote: async (name, silent = false) => {
     const { activeId } = useRepoStore.getState();
     if (!activeId) return null;
     try {
       const count = await withHostKeyTrust(() => remoteTest(activeId, name));
-      toast.success(t('sync.testOk', { count }));
+      if (!silent) toast.success(t('sync.testOk', { count }));
       return count;
     } catch (error) {
-      reportError(error, 'sync');
+      if (!silent) reportError(error, 'sync');
       return null;
     }
   },

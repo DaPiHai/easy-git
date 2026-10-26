@@ -374,3 +374,14 @@ IPC 序列化为 `{code, params, message_zh, hint?}`；前端 `lib/ipc/errors.ts
 | 4 | 密钥向导 | `ssh_generate_key` 生成 `~/.ssh/id_ed25519`（ed25519、无口令、权限 600、拒绝覆盖）；`ssh_public_key` 只允许读 `~/.ssh/*.pub`；`ssh_test_github` 解析 `Hi <user>! You've successfully authenticated`（GitHub 成功也退出 1）。前端全局 `SshHostKeyDialog` + `SshSetupDialog`，`withHostKeyTrust` 在信任后自动重试原操作一次；`open-ssh-setup` hint 直达向导。 |
 | 5 | 多远端 | `syncStore.selectedRemote` 按仓库持久化到 `localStorage`（默认：已保存 → 上游远端 → origin → 首个）；同步按钮旁的 `<select>` 决定 fetch/pull/push 目标。`pushAll` 非强推、选中远端优先、单个失败继续、取消即停止，最后一条汇总 toast；单次 push 仅在分支没有上游时自动 `branch_set_upstream`，`pushAll` 不改上游。 |
 | 6 | 测试与边界 | Rust 新增主机指纹/URL 解析/认证错误分类单测；前端新增 sshStore 信任重试、syncStore 选择/全部推送单测。真实 GitHub 检测仍需用户账号做一次手工验收；keychain/口令记忆、HTTPS token 托管仍不在本轮范围。 |
+
+### 2026-10-26 · 下拉统一与远程页多选批量同步偏差记录
+
+| # | 条目 | 说明 |
+| --- | --- | --- |
+| 1 | 下拉根因 | 顶栏同步远端、分支上游、历史过滤、日志文件仍是原生 `<select>`：关闭态样式由各页面各写一份，展开态由操作系统绘制，亮色主题下会出现系统深色菜单，和 `surface-*` 令牌体系不一致。 |
+| 2 | 通用 Select | 新增 `src/components/Select.tsx`：自绘 `button` 触发器 + `surface-3` 菜单，不再依赖原生 option 弹层；支持 `size`/`tone`/`className`/`disabled`/空态，`testId` 同时生成选项 testid。键盘支持 Enter/Space/方向键打开、方向键移动、Enter/Space 选择、Esc/失焦/外部点击关闭；不引入新依赖。曾评估 Radix RadioGroup，但 jsdom 下菜单挂载约 20s/条，故不采用。 |
+| 3 | 迁移范围 | 顶栏 `sync-remote`、分支页 `upstream-select`、历史页 `history-filter-branch`、设置日志 `logs-file` 全部改用 Select；行为与原有 value/onChange 一致，测试改为点击触发器 + 选项。 |
+| 4 | 批量 store | `fetch`/`testRemote` 新增 `silent` 参数（批量时不逐远端弹成功/错误 toast）；新增 `fetchMany`/`testMany`/`pushMany`，顺序执行、去重、空选返回空、`pushMany` 遇 `cancelled` 停止；`pushAll` 保留选中远端优先顺序并委托 `pushMany`。批量汇总 toast：全成功、部分失败、取消三态。 |
+| 5 | 远程页多选 | `RemotesPage` 本地状态 `selected:Set`、`bulk`、`rowStatus`；表头全选支持半选；批量按钮测试/获取/推送/拉取；拉取仅在恰好 1 个远端且当前分支存在时启用，多选禁用并提示。推送非强推；分叉拉取复用合并确认 Dialog。仓库切换时通过 `AppShell` 的 `key={activeId}` 重挂载重置选择。 |
+| 6 | 验证 | 新增 Select/RemotesPage 测试，扩充 syncStore 批量、SyncButtons/History/Logs 下拉交互；全量 typecheck/lint/format/test 通过后出 MSI 0.1.0.13 + NSIS。 |

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ArrowDownToLine, ArrowUpToLine, CloudDownload, Layers } from 'lucide-react';
-import { Button, Dialog } from '../../components';
+import { Button, Dialog, Select } from '../../components';
 import { t } from '../../lib/i18n';
 import { useRepoStore } from '../../stores/repoStore';
 import { useSyncStore } from '../../stores/syncStore';
@@ -67,20 +67,15 @@ export function SyncButtons({ hasActiveRepo }: { hasActiveRepo: boolean }) {
   return (
     <>
       {remotes.length > 0 ? (
-        <select
+        <Select
           value={remote}
-          onChange={(event) => setSelectedRemote(event.target.value)}
-          aria-label={t('sync.remote')}
-          title={t('sync.remote')}
-          data-testid="sync-remote"
-          className="h-7 max-w-[120px] rounded-md border border-hairline-strong bg-surface-2 px-1.5 text-caption text-ink-muted outline-none focus:border-primary"
-        >
-          {remotes.map((entry) => (
-            <option key={entry.name} value={entry.name}>
-              {entry.name}
-            </option>
-          ))}
-        </select>
+          options={remotes.map((entry) => ({ value: entry.name, label: entry.name }))}
+          onChange={setSelectedRemote}
+          ariaLabel={t('sync.remote')}
+          testId="sync-remote"
+          size="sm"
+          className="max-w-[120px]"
+        />
       ) : null}
       <Button
         variant="tertiary"

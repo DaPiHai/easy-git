@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { SyncButtons } from './SyncButtons';
 import { useRepoStore } from '../../stores/repoStore';
@@ -53,10 +53,20 @@ describe('SyncButtons multi-remote', () => {
     render(<SyncButtons hasActiveRepo />);
 
     const select = screen.getByTestId('sync-remote');
-    expect(select).toHaveValue('mirror');
+    expect(select).toHaveTextContent('mirror');
 
     await user.click(screen.getByTestId('sync-push'));
     expect(pushMock).toHaveBeenCalledWith('r1', 'mirror', 'main', false, null);
+  });
+
+  it('opens the styled menu and selects another remote', () => {
+    render(<SyncButtons hasActiveRepo />);
+
+    fireEvent.click(screen.getByTestId('sync-remote'));
+    fireEvent.click(screen.getByTestId('sync-remote-option-origin'));
+
+    expect(screen.getByTestId('sync-remote')).toHaveTextContent('origin');
+    expect(useSyncStore.getState().selectedRemote).toBe('origin');
   });
 
   it('pushes to every remote after confirmation', async () => {

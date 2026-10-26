@@ -10,7 +10,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Badge, Button, Dialog, EmptyState } from '../../components';
+import { Badge, Button, Dialog, EmptyState, Select } from '../../components';
 import { t } from '../../lib/i18n';
 import { useIsSshActive } from '../../lib/useSshRepo';
 import { authorInitial, formatRelativeTime } from '../../lib/time';
@@ -291,20 +291,17 @@ function UpstreamDialog({
         {name} · {t('remotes.upstream')}：
         <span className="font-mono">{current?.upstream ?? t('remotes.none')}</span>
       </p>
-      <select
+      <Select
         value={selection}
-        onChange={(e) => setSelection(e.target.value)}
-        data-testid="upstream-select"
-        aria-label={t('remotes.upstreamPlaceholder')}
-        className="h-8 w-full rounded-md border border-hairline-strong bg-surface-2 px-eg-2 text-secondary text-ink outline-none focus:border-primary"
-      >
-        <option value="">{t('remotes.upstreamPlaceholder')}</option>
-        {remoteBranches.map((rb) => (
-          <option key={rb} value={rb}>
-            {rb}
-          </option>
-        ))}
-      </select>
+        options={[
+          { value: '', label: t('remotes.upstreamPlaceholder') },
+          ...remoteBranches.map((rb) => ({ value: rb, label: rb })),
+        ]}
+        onChange={setSelection}
+        testId="upstream-select"
+        ariaLabel={t('remotes.upstreamPlaceholder')}
+        className="w-full"
+      />
     </Dialog>
   );
 }

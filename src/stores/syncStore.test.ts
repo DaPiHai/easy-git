@@ -13,6 +13,7 @@ import type {
 const fetchMock = vi.fn<(...args: unknown[]) => unknown>();
 const pullMock = vi.fn<(...args: unknown[]) => unknown>();
 const pushMock = vi.fn<(...args: unknown[]) => unknown>();
+const remoteTestMock = vi.fn<(...args: unknown[]) => unknown>();
 const remoteListMock = vi.fn<(...args: unknown[]) => unknown>();
 const remoteBranchListMock = vi.fn<(...args: unknown[]) => unknown>();
 const undoRedoMock = vi.fn<(...args: unknown[]) => unknown>();
@@ -28,6 +29,7 @@ vi.mock('../lib/ipc/commands', async (importOriginal) => {
     fetchRemote: (...args: unknown[]) => fetchMock(...args),
     pullRemote: (...args: unknown[]) => pullMock(...args),
     pushRemote: (...args: unknown[]) => pushMock(...args),
+    remoteTest: (...args: unknown[]) => remoteTestMock(...args),
     remoteList: (...args: unknown[]) => remoteListMock(...args),
     remoteBranchList: (...args: unknown[]) => remoteBranchListMock(...args),
     undoRedoState: (...args: unknown[]) => undoRedoMock(...args),
@@ -250,6 +252,36 @@ describe('syncStore remote selection & push all', () => {
     branchListMock.mockResolvedValue([{ name: 'main', isCurrent: true, upstream: 'origin/main' }]);
     pushMock.mockResolvedValue(cleanStatus());
     await useSyncStore.getState().push('mirror', 'main', false);
+    expect(setUpstreamMock).not.toHaveBeenCalled();
+  });
+
+  it('fetchMany fetches the requested remotes in order', async () => {
+    fetchMock.mockResolvedValue(cleanStatus());
+    const results = await useSyncStore.getState().fetchMany(['origin', 'mirror', 'origin']);
+    expect(fetchMock.mock.calls.map((call) => call[1])).toEqual(['origin', 'mirror']);
+    expect(results).toEqual([
+      { remote: 'origin', status: 'ok' },
+      { remote: 'mirror', status: 'ok' },
+    ]);
+  });
+
+  it('testMany tests only the requested remotes', async () => {
+    remoteTestMock.mockResolvedValue(2);
+    const results = await useSyncStore.getState().testMany(['mirror']);
+    expect(remoteTestMock).toHaveBeenCalledWith('r1', 'mirror');
+    expect(results).toEqual([{ remote: 'mirror', status: 'ok' }]);
+  });
+
+  it('pushMany pushes a subset and keeps going after a rejection', async () => {
+    pushMock
+      .mockRejectedValueOnce({ code: 'conflict_state', state: 'rejected' })
+      .mockResolvedValueOnce(cleanStatus());
+    const results = await useSyncStore.getState().pushMany('main', ['origin', 'mirror']);
+    expect(pushMock.mock.calls.map((call) => call[1])).toEqual(['origin', 'mirror']);
+    expect(results).toEqual([
+      { remote: 'origin', status: 'rejected' },
+      { remote: 'mirror', status: 'ok' },
+    ]);
     expect(setUpstreamMock).not.toHaveBeenCalled();
   });
 });

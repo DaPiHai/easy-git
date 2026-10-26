@@ -8,6 +8,7 @@
 import { Copy, ExternalLink, FileText, RefreshCw } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { openPath } from '@tauri-apps/plugin-opener';
+import { Select } from '../../components';
 import { t, type MessageKey } from '../../lib/i18n';
 import {
   formatIpcError,
@@ -140,20 +141,21 @@ export function LogsPanel() {
 
       <div className="mt-eg-3 flex flex-wrap items-center gap-2">
         <FileText className="size-4 shrink-0 text-ink-tertiary" aria-hidden />
-        <select
+        <Select
           value={selected ?? ''}
-          onChange={(e) => setSelected(e.target.value)}
-          data-testid="logs-file"
-          aria-label={t('logs.file')}
-          className="h-8 max-w-64 rounded-md border border-hairline-strong bg-surface-2 px-2 text-secondary text-ink outline-none focus:border-primary"
-        >
-          {files.length === 0 ? <option value="">{t('logs.empty')}</option> : null}
-          {files.map((file) => (
-            <option key={file.fileName} value={file.fileName}>
-              {file.fileName}（{formatSize(file.sizeBytes)}）
-            </option>
-          ))}
-        </select>
+          options={
+            files.length === 0
+              ? [{ value: '', label: t('logs.empty') }]
+              : files.map((file) => ({
+                  value: file.fileName,
+                  label: `${file.fileName}（${formatSize(file.sizeBytes)}）`,
+                }))
+          }
+          onChange={setSelected}
+          ariaLabel={t('logs.file')}
+          testId="logs-file"
+          className="max-w-64"
+        />
         <div className="ml-auto flex items-center gap-1.5">
           {LEVEL_FILTERS.map((level) => (
             <button

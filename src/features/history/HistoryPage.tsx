@@ -1,7 +1,7 @@
 import * as ContextMenu from '@radix-ui/react-context-menu';
 import { GitBranch, GitCommitHorizontal, GitGraph, Search, Tag } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Dialog, EmptyState, LoadingBar } from '../../components';
+import { Button, Dialog, EmptyState, LoadingBar, Select } from '../../components';
 import { t } from '../../lib/i18n';
 import { useIsSshActive } from '../../lib/useSshRepo';
 import { authorInitial, formatRelativeTime } from '../../lib/time';
@@ -88,20 +88,18 @@ function FilterBar() {
     >
       <label className="flex items-center gap-1.5 text-caption text-ink-subtle">
         <GitBranch className="size-3.5" aria-hidden />
-        <select
+        <Select
           value={branch ?? ''}
-          onChange={(e) => void setFilter({ branch: e.target.value || null })}
-          aria-label={t('history.filter.branch')}
-          data-testid="history-filter-branch"
-          className="h-7 rounded-md border border-hairline-strong bg-surface-1 px-eg-2 text-caption text-ink outline-none"
-        >
-          <option value="">{t('history.filter.allBranches')}</option>
-          {branches.map((b) => (
-            <option key={b} value={b}>
-              {b}
-            </option>
-          ))}
-        </select>
+          options={[
+            { value: '', label: t('history.filter.allBranches') },
+            ...branches.map((b) => ({ value: b, label: b })),
+          ]}
+          onChange={(value) => void setFilter({ branch: value || null })}
+          ariaLabel={t('history.filter.branch')}
+          testId="history-filter-branch"
+          size="sm"
+          tone="surface-1"
+        />
       </label>
       <input
         onChange={(e) => {

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LogsPanel, filterLog } from './LogsPanel';
@@ -71,7 +71,15 @@ describe('LogsPanel', () => {
       expect(screen.getByTestId('logs-content')).toHaveTextContent('app starting');
     });
     expect(logsReadMock).toHaveBeenCalledWith('easygit.log.2026-09-12');
-    expect(screen.getByTestId('logs-file')).toHaveTextContent('2026-09-11');
+    expect(screen.getByTestId('logs-file')).toHaveTextContent('2026-09-12');
+  });
+
+  it('switches to another log file through the styled menu', async () => {
+    render(<LogsPanel />);
+    await screen.findByTestId('logs-content');
+    fireEvent.click(screen.getByTestId('logs-file'));
+    fireEvent.click(screen.getByTestId('logs-file-option-easygit.log.2026-09-11'));
+    await waitFor(() => expect(logsReadMock).toHaveBeenCalledWith('easygit.log.2026-09-11'));
   });
 
   it('hides other levels after picking the error filter', async () => {
