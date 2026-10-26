@@ -1,0 +1,35 @@
+# Line-ending policy.
+#
+# Every tracked text file is committed as LF (the whole history is LF), so pin
+# LF for checkouts too.
+#
+# What this does NOT do: stop an editor or file-sync tool from rewriting the
+# worktree to CRLF. `git status` still reports those files as modified —
+# gitattributes cannot make a CRLF worktree look clean. Verified 2026-10-16 by
+# simulating the rewrite with and without this file: the `M` status is
+# identical in both cases.
+#
+# What it DOES do is stop that rewrite from reaching the repository. With this
+# file `git add` normalizes to LF, so the CRLF can never be committed; without
+# it the same `git add` stores CRLF verbatim, which is how a 100+ file "changed"
+# commit gets made out of pure line-ending noise. `git diff` also starts
+# emitting the explicit hint "CRLF will be replaced by LF" instead of differing
+# silently.
+#
+# So the symptom is still possible (it hit all 123 tracked files on
+# 2026-10-16) — it is just no longer harmful. Diagnose an EOL-only dirty tree
+# with `git diff --ignore-cr-at-eol --stat`: empty means nothing but the
+# carriage return differs, and `git restore .` is the fix.
+* text=auto eol=lf
+
+# Upstream vendored spec files that are genuinely CRLF in the repository
+# (awesome-design-md, MIT — see docs/README.md). `-text` opts them out of
+# normalization so they keep their original bytes instead of showing up as
+# permanently modified.
+docs/design/DESIGN.md -text
+docs/design/LICENSE.awesome-design-md -text
+
+# Binary assets: never line-ending converted.
+*.png binary
+*.ico binary
+*.icns binary

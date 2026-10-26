@@ -15,3 +15,6 @@ src-tauri/gen/schemas/
 
 # WorkBuddy AI tooling (local memory state)
 .workbuddy-ai/
+
+# DeepSeek Harness session tooling (local command transcripts)
+.dsh-ops/
