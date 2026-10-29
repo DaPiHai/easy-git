@@ -385,3 +385,13 @@ IPC 序列化为 `{code, params, message_zh, hint?}`；前端 `lib/ipc/errors.ts
 | 4 | 批量 store | `fetch`/`testRemote` 新增 `silent` 参数（批量时不逐远端弹成功/错误 toast）；新增 `fetchMany`/`testMany`/`pushMany`，顺序执行、去重、空选返回空、`pushMany` 遇 `cancelled` 停止；`pushAll` 保留选中远端优先顺序并委托 `pushMany`。批量汇总 toast：全成功、部分失败、取消三态。 |
 | 5 | 远程页多选 | `RemotesPage` 本地状态 `selected:Set`、`bulk`、`rowStatus`；表头全选支持半选；批量按钮测试/获取/推送/拉取；拉取仅在恰好 1 个远端且当前分支存在时启用，多选禁用并提示。推送非强推；分叉拉取复用合并确认 Dialog。仓库切换时通过 `AppShell` 的 `key={activeId}` 重挂载重置选择。 |
 | 6 | 验证 | 新增 Select/RemotesPage 测试，扩充 syncStore 批量、SyncButtons/History/Logs 下拉交互；全量 typecheck/lint/format/test 通过后出 MSI 0.1.0.13 + NSIS。 |
+
+### 2026-10-29 · rc.3 版本升级与项目门面重构
+
+| # | 条目 | 说明 |
+| --- | --- | --- |
+| 1 | 版本升级 | `0.1.0-rc.2` → `0.1.0-rc.3`：workspace `Cargo.toml`、`Cargo.lock`（6 个 workspace 成员）、`tauri.conf.json` 同步；背景是 rc.2 tag 之后又落了 SSH 首次连接引导、多远端同步、下拉统一与远程页多选等 12 个提交，需要重新定版出包。`package.json` 的 `version` 仍是 `0.1.0`（非权威版本源，未跟随），版本口径以 `src-tauri/Cargo.toml` `[workspace.package]` 为准。 |
+| 2 | README 重构 | 根 README 重写为「为什么做 → 界面速览 → 能力清单 → 安全网 → 架构 → 上手 → 性能 → 路线图 → 文档 → 贡献 → 已知限制」；删掉与代码不符的描述（平台集成、子模块/工作树、10 万+ 提交流畅），数字换成可核对口径（72 条命令、包体积、冷启动 0.49 s、首屏 0.43 s、280 前端用例）；新增 `docs/screenshots/` 11 张 1440×900 界面截图（`pnpm dev` 预览环境 + `window.__eg` 注入演示数据截取）。`docs/README.md` 补上此前漏收的 `perf-baseline.md` 与 `testing-10min.md`。 |
+| 3 | 顺带修复 | 提交详情面板底部仍是 W5 时期的「文件 diff 视图将在下个版本提供（W6）」，而 W6 已交付点文件看 diff；改为「点击上方文件，查看该提交的具体改动」，`CommitDetailPanel` 头注释同步纠正。 |
+| 4 | 发布 | 提交 + annotated tag `v0.1.0-rc.3`（"windows公测版"）推送 `origin/main`；M1 真人可用性验收仍未完成（5 人 × 10 分钟测试），不因此 tag 视为 M1 验收通过。 |
+

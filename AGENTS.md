@@ -4,7 +4,7 @@
 
 EasyGit：轻量、跨平台、中文优先的 Git 可视化**桌面应用**，目标是让完全不会命令行的用户安全完成 Git 操作。Tauri 2 + Rust 核心 + React 18/TypeScript 前端，MIT 协议开源。
 
-**当前阶段：`0.1.0-rc.2` 完整工程（见 `src-tauri/Cargo.toml` workspace.version）。** 单前端包（无 pnpm-workspace）+ `src-tauri/` Rust workspace；分支 `main`，CI 在 Windows/macOS/Ubuntu 三矩阵出包。不要再按 M1 计划 W1 从零建脚手架。
+**当前阶段：`0.1.0-rc.3` 完整工程（见 `src-tauri/Cargo.toml` workspace.version）。** 单前端包（无 pnpm-workspace）+ `src-tauri/` Rust workspace；分支 `main`，CI 在 Windows/macOS/Ubuntu 三矩阵出包。不要再按 M1 计划 W1 从零建脚手架。
 
 ## 目录结构
 

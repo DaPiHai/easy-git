@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > 本仓库的权威工程约定是 **`AGENTS.md`**（架构边界、已锁定规范、已知注意事项、交付要求）；本文件不重复它，
 > 只补「命令速查」与「需要读多个文件才能建立的整体认知」。两者冲突时以 `AGENTS.md` 为准。
 
-EasyGit：Tauri 2 + Rust 核心 + React 18/TS 的**中文优先 Git 可视化桌面应用**（`0.1.0-rc.2`，MIT）。
+EasyGit：Tauri 2 + Rust 核心 + React 18/TS 的**中文优先 Git 可视化桌面应用**（`0.1.0-rc.3`，MIT）。
 git 逻辑只存在于 Rust 侧；前端是纯展示与编排。文档索引见 `docs/README.md`。
 
 ## 常用命令

@@ -20,7 +20,7 @@
 
 EasyGit 把 Git 的全部常用操作搬进一个中文界面的桌面应用：勾选文件即暂存、在 diff 里逐块提交、用一张提交历史图看清分支来去、冲突逐块点选——**每个动作都会展示等价的 git 命令**，边用边学。对熟练开发者，它同样是一个不打断手感的专业客户端。
 
-> **项目状态**：`0.1.0-rc.2`（Windows 公测 / Linux deb·rpm·AppImage 出包）。M1 功能面已闭合，M2/M3 计划中。
+> **项目状态**：`0.1.0-rc.3`（Windows 公测 / Linux deb·rpm·AppImage 出包）。M1 功能面已闭合，M2/M3 计划中。
 > 安装包**尚未代码签名**，首次运行可能会遇到 SmartScreen / Gatekeeper 提示（见[已知限制](#已知限制)）。
 
 ---
@@ -192,7 +192,7 @@ EasyGit 的取舍很明确：
 
 ### 使用
 
-1. 从 CI 构建产物（`.github/workflows/ci.yml` 的 artifacts：deb / rpm / AppImage / msi / exe / dmg）或本地 `pnpm tauri build` 取得安装包。当前唯一的 tag [`v0.1.0-rc.2`](https://github.com/DaPiHai/easy-git/tree/v0.1.0-rc.2) 标注为 Windows 公测版。
+1. 从 CI 构建产物（`.github/workflows/ci.yml` 的 artifacts：deb / rpm / AppImage / msi / exe / dmg）或本地 `pnpm tauri build` 取得安装包。当前唯一的 tag [`v0.1.0-rc.3`](https://github.com/DaPiHai/easy-git/tree/v0.1.0-rc.3) 标注为 Windows 公测版。
 2. 确认系统已安装 **Git ≥ 2.30** 并在 `PATH` 上——EasyGit 不自带 git，启动时会自检并给出安装引导。
 3. 打开 EasyGit，选择本地仓库 / 克隆 / 连 SSH 远端仓库，即可开始。
 
@@ -248,7 +248,7 @@ Linux（WSL2 / WSLg，6 核）deb release 构建，`mid-size` 基准仓库（500
 
 | 里程碑 | 内容 | 状态 |
 | --- | --- | --- |
-| **M1 — 本地仓库全流程** | 多仓库、三区暂存、提交、DAG 历史、分支/标签/储藏、合并与冲突向导、推送拉取、撤销系统、时间线、自动维护、命令透视 | **已完成**，`0.1.0-rc.2` 出包；真人可用性验收待完成 |
+| **M1 — 本地仓库全流程** | 多仓库、三区暂存、提交、DAG 历史、分支/标签/储藏、合并与冲突向导、推送拉取、撤销系统、时间线、自动维护、命令透视 | **已完成**，`0.1.0-rc.3` 出包；真人可用性验收待完成 |
 | **M2 — 远程协作** | 变基、摘取提交、检出历史版本、远程分支管理、GitHub/GitLab/Gitee 账号与 PR/MR/Issue | 计划中 |
 | **M3 — 进阶与打磨** | 交互式变基、二分定位、子模块/工作树、blame 增强、英文包、10 万提交性能达标、自动更新 | 计划中 |
 
