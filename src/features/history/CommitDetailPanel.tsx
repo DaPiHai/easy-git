@@ -9,7 +9,7 @@ import { DiffView } from '../diff/DiffView';
 
 /**
  * Commit detail (m1-plan F-16): metadata, refs and the changed-file list.
- * Clicking a file shows the diff placeholder until W6 ships the diff view.
+ * Clicking a file shows that file's read-only diff (F-18).
  */
 export function CommitDetailPanel() {
   const detail = useHistoryStore((s) => s.detail);

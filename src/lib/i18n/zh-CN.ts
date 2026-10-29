@@ -232,7 +232,7 @@ export const zhCN = {
   'history.detail.loading': '加载详情中…',
   'history.detail.empty': '在左侧选择一个提交，这里会显示变更文件与提交信息',
   'history.detail.files': '变更文件',
-  'history.detail.diffPlaceholder': '文件 diff 视图将在下个版本提供（W6）',
+  'history.detail.diffPlaceholder': '点击上方文件，查看该提交的具体改动',
 
   'branches.title': '分支',
   'branches.empty.title': '分支看板将在这里显示',
